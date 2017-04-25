@@ -6,7 +6,7 @@ import java.util.concurrent.Executors;
 
 import org.microprofile.nio.SocketServer;
 import org.microprofile.websocket.handler.MessageHandler;
-import org.microprofile.websocket.handler.ServerProtocolHandler;
+import org.microprofile.websocket.handler.WebSocketProtocolHandler;
 
 public class WebSocketServer implements Closeable {
 	private SocketServer socketServer;
@@ -19,7 +19,8 @@ public class WebSocketServer implements Closeable {
 		if (null == messageHandler) {
 			throw new IllegalArgumentException("messageHandler can't be null");
 		}
-		this.socketServer = new SocketServer(host, port, Executors.newFixedThreadPool(poolSize), new ServerProtocolHandler(messageHandler));
+		this.socketServer = new SocketServer(host, port, Executors.newFixedThreadPool(poolSize),
+				new WebSocketProtocolHandler(messageHandler));
 	}
 
 	public void listen() throws IOException {

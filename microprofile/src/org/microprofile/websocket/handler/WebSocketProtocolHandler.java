@@ -13,11 +13,17 @@ import org.microprofile.websocket.utils.MessageUtils;
  * @author zhangxdr
  *
  */
-public class ServerProtocolHandler implements ProtocolHandler {
+public class WebSocketProtocolHandler implements ProtocolHandler {
 	private MessageHandler handler;
+	private boolean server;
 
-	public ServerProtocolHandler(MessageHandler handler) {
+	public WebSocketProtocolHandler(MessageHandler handler) {
 		this.handler = handler;
+	}
+
+	public WebSocketProtocolHandler(MessageHandler handler, boolean server) {
+		this.handler = handler;
+		this.server = server;
 	}
 
 	@Override
@@ -27,7 +33,9 @@ public class ServerProtocolHandler implements ProtocolHandler {
 		if (null == session) {
 			session = new Session(socketChannel);
 			key.attach(session);
-			HttpProtocolUtils.processProtocol(socketChannel, byteBuffer);
+			if (server) {
+				HttpProtocolUtils.processProtocol(socketChannel, byteBuffer);
+			}
 			handler.onOpen(session);
 		} else {
 			Message message = MessageUtils.processMessage(byteBuffer);

@@ -5,7 +5,7 @@ import java.io.IOException;
 import java.util.concurrent.Executors;
 
 import org.microprofile.nio.SocketClient;
-import org.microprofile.websocket.handler.ClientProtocolHandler;
+import org.microprofile.websocket.handler.WebSocketProtocolHandler;
 import org.microprofile.websocket.handler.Message;
 import org.microprofile.websocket.handler.MessageHandler;
 import org.microprofile.websocket.utils.HttpProtocolUtils;
@@ -19,7 +19,7 @@ public class WebSocketClient implements Closeable {
 			throw new IllegalArgumentException("messageHandler can't be null");
 		}
 		this.socketClient = new SocketClient(host, prot, Executors.newFixedThreadPool(1),
-				new ClientProtocolHandler(messageHandler));
+				new WebSocketProtocolHandler(messageHandler));
 		HttpProtocolUtils.sendHandshake(socketClient.getSocketChannel());
 	}
 
