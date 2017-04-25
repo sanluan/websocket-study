@@ -58,12 +58,10 @@ class ClientMessageHandler implements MessageHandler {
 
 	@Override
 	public void onOpen(Session session) throws IOException {
-		System.out.println("open");
 	}
 
 	@Override
 	public void onClose(Session session) throws IOException {
-		System.out.println("close");
 	}
 
 }

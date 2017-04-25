@@ -30,7 +30,6 @@ class ServerMessageHandler implements MessageHandler {
 	public void onMessage(Message message, Session session) throws IOException {
 		String str = new String(message.getPayload());
 		System.out.println(str);
-		session.sendString("收到");
 		if (str.startsWith("群发:")) {
 			for (Session s : sessionList) {
 				s.sendString(str);
@@ -40,13 +39,11 @@ class ServerMessageHandler implements MessageHandler {
 
 	@Override
 	public void onOpen(Session session) throws IOException {
-		System.out.println("open");
 		sessionList.add(session);
 	}
 
 	@Override
 	public void onClose(Session session) throws IOException {
-		System.out.println("close");
 		sessionList.remove(session);
 	}
 
