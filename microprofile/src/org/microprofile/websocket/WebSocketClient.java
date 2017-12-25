@@ -19,7 +19,7 @@ public class WebSocketClient implements Closeable {
 			throw new IllegalArgumentException("messageHandler can't be null");
 		}
 		this.socketClient = new SocketClient(host, prot, Executors.newFixedThreadPool(1),
-				new WebSocketProtocolHandler(messageHandler));
+				new WebSocketProtocolHandler(messageHandler, false));
 		HttpProtocolUtils.sendHandshake(socketClient.getSocketChannel());
 	}
 

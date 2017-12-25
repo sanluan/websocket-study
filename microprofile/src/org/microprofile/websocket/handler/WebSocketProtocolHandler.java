@@ -15,7 +15,7 @@ import org.microprofile.websocket.utils.MessageUtils;
  */
 public class WebSocketProtocolHandler implements ProtocolHandler {
 	private MessageHandler handler;
-	private boolean server;
+	private boolean server = true;
 
 	public WebSocketProtocolHandler(MessageHandler handler) {
 		this.handler = handler;
