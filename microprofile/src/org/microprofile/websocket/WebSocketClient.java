@@ -12,35 +12,39 @@ import org.microprofile.websocket.utils.HttpProtocolUtils;
 import org.microprofile.websocket.utils.MessageUtils;
 
 public class WebSocketClient implements Closeable {
-	private SocketClient socketClient;
+    private SocketClient socketClient;
 
-	public WebSocketClient(String host, int prot, MessageHandler messageHandler) throws IOException {
-		if (null == messageHandler) {
-			throw new IllegalArgumentException("messageHandler can't be null");
-		}
-		this.socketClient = new SocketClient(host, prot, Executors.newFixedThreadPool(1),
-				new WebSocketProtocolHandler(messageHandler, false));
-		HttpProtocolUtils.sendHandshake(socketClient.getSocketChannel());
-	}
+    public WebSocketClient(String host, int prot, MessageHandler messageHandler) throws IOException {
+        if (null == messageHandler) {
+            throw new IllegalArgumentException("messageHandler can't be null");
+        }
+        this.socketClient = new SocketClient(host, prot, Executors.newFixedThreadPool(1),
+                new WebSocketProtocolHandler(messageHandler, false));
+        HttpProtocolUtils.sendHandshake(socketClient.getSocketChannel());
+    }
 
-	public void listen() throws IOException {
-		socketClient.listen();
-	}
+    public void listen() throws IOException {
+        socketClient.listen();
+    }
+    
+    public void asyncListen() throws IOException {
+        socketClient.asyncListen();
+    }
 
-	public void sendString(String data) throws IOException {
-		send(new Message(true, 0, Message.OPCODE_PART_STRING, data.getBytes()));
-	}
+    public void sendString(String data) throws IOException {
+        send(new Message(true, 0, Message.OPCODE_PART_STRING, data.getBytes()));
+    }
 
-	public void sendByte(byte[] data) throws IOException {
-		send(new Message(true, 0, Message.OPCODE_PART_BYTE, data));
-	}
+    public void sendByte(byte[] data) throws IOException {
+        send(new Message(true, 0, Message.OPCODE_PART_BYTE, data));
+    }
 
-	public void send(Message message) throws IOException {
-		socketClient.getSocketChannel().write(MessageUtils.wrapMessage(message, false, true));
-	}
+    public void send(Message message) throws IOException {
+        socketClient.getSocketChannel().write(MessageUtils.wrapMessage(message, false, true));
+    }
 
-	public void close() throws IOException {
-		socketClient.close();
-	}
+    public void close() throws IOException {
+        socketClient.close();
+    }
 
 }

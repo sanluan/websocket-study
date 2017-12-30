@@ -9,26 +9,30 @@ import org.microprofile.websocket.handler.MessageHandler;
 import org.microprofile.websocket.handler.WebSocketProtocolHandler;
 
 public class WebSocketServer implements Closeable {
-	private SocketServer socketServer;
+    private SocketServer socketServer;
 
-	public WebSocketServer(int port, int poolSize, MessageHandler messageHandler) throws IOException {
-		this(null, port, poolSize, messageHandler);
-	}
+    public WebSocketServer(int port, int poolSize, MessageHandler messageHandler) throws IOException {
+        this(null, port, poolSize, messageHandler);
+    }
 
-	public WebSocketServer(String host, int port, int poolSize, MessageHandler messageHandler) throws IOException {
-		if (null == messageHandler) {
-			throw new IllegalArgumentException("messageHandler can't be null");
-		}
-		this.socketServer = new SocketServer(host, port, Executors.newFixedThreadPool(poolSize),
-				new WebSocketProtocolHandler(messageHandler));
-	}
+    public WebSocketServer(String host, int port, int poolSize, MessageHandler messageHandler) throws IOException {
+        if (null == messageHandler) {
+            throw new IllegalArgumentException("messageHandler can't be null");
+        }
+        this.socketServer = new SocketServer(host, port, Executors.newFixedThreadPool(poolSize),
+                new WebSocketProtocolHandler(messageHandler));
+    }
 
-	public void listen() throws IOException {
-		socketServer.listen();
-	}
+    public void listen() throws IOException {
+        socketServer.listen();
+    }
 
-	public void close() throws IOException {
-		socketServer.close();
-	}
+    public void asyncListen() throws IOException {
+        socketServer.asyncListen();
+    }
+
+    public void close() throws IOException {
+        socketServer.close();
+    }
 
 }

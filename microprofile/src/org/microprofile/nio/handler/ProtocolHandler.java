@@ -6,8 +6,8 @@ import java.nio.channels.SelectionKey;
 
 public interface ProtocolHandler {
 
-	public void read(SelectionKey key, ByteBuffer byteBuffer) throws IOException;
+    public void read(SelectionKey key, ByteBuffer byteBuffer) throws IOException;
 
-	public void close(SelectionKey key) throws IOException;
+    public void close(SelectionKey key) throws IOException;
 
 }
