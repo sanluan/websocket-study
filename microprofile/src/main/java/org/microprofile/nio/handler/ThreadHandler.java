@@ -20,6 +20,13 @@ public class ThreadHandler implements Runnable {
         try {
             protocolHandler.read(key, byteBuffer);
         } catch (IOException e) {
+            if (key.channel().isOpen()) {
+                try {
+                    key.channel().close();
+                    key.cancel();
+                } catch (IOException e1) {
+                }
+            }
         }
     }
 }
