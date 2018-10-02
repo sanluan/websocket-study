@@ -17,6 +17,13 @@
 			<url>http://jcenter.bintray.com/</url>
 		</pluginRepository>
 	</pluginRepositories>
+    <dependencies>
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>2.6</version>
+        </dependency>
+    </dependencies>
 	<build>
 		<defaultGoal>compile</defaultGoal>
 		<finalName>${project.artifactId}</finalName>
