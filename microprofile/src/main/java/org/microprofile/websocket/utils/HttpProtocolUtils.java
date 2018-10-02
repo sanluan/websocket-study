@@ -12,7 +12,6 @@ import org.microprofile.common.utils.Base64Utils;
 public class HttpProtocolUtils {
     private static final String HTTP_ERROR = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/html\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n";
     private static final String HTTP_WEBSOCKET_RESPONSE = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept:";
-    private static final String HTTP_WEBSOCKET_REQUEST = "GET / HTTP/1.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nHost: 127.0.0.1:9020\r\nOrigin: null\r\nSec-WebSocket-Key: SN3OSin4/Zok8kmgrD8qxQ==\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Extensions: x-webkit-deflate-frame";
     private static final String ENCODE = "UTF-8";
     private static MessageDigest mssageDigest;
 
@@ -37,8 +36,11 @@ public class HttpProtocolUtils {
         }
     }
 
-    public static void sendHandshake(SocketChannel client) throws IOException {
-        send(client, HTTP_WEBSOCKET_REQUEST);
+    public static void sendHandshake(SocketChannel client, String host, int port) throws IOException {
+        StringBuilder sb = new StringBuilder("GET / HTTP/1.1\\r\\nUpgrade: websocket\\r\\nConnection: Upgrade\\r\\nHost: ");
+        sb.append(host).append(":").append(port).append(
+                "\\r\\nOrigin: null\\r\\nSec-WebSocket-Key: SN3OSin4/Zok8kmgrD8qxQ==\\r\\nSec-WebSocket-Version: 13\\r\\nSec-WebSocket-Extensions: x-webkit-deflate-frame");
+        send(client, sb.toString());
     }
 
     private static void send(SocketChannel client, String message) throws IOException {

@@ -30,15 +30,12 @@ public class WebSocketProtocolHandler implements ProtocolHandler {
     public void read(SelectionKey key, ByteBuffer byteBuffer) throws IOException {
         SocketChannel socketChannel = (SocketChannel) key.channel();
         Session session = (Session) key.attachment();
+        if (null == session) {
+            session = new Session(socketChannel);
+            key.attach(session);
+        }
         try {
-            if (null == session) {
-                session = new Session(socketChannel);
-                key.attach(session);
-                if (server) {
-                    HttpProtocolUtils.processProtocol(socketChannel, byteBuffer);
-                }
-                handler.onOpen(session);
-            } else {
+            if (session.isInitialized()) {
                 ByteBuffer lastMessage = session.getLastMessage();
                 Message message;
                 if (null != lastMessage) {
@@ -67,6 +64,12 @@ public class WebSocketProtocolHandler implements ProtocolHandler {
                         handler.onMessage(message, session);
                     }
                 }
+            } else {
+                if (server) {
+                    HttpProtocolUtils.processProtocol(socketChannel, byteBuffer);
+                }
+                session.setInitialized(true);
+                handler.onOpen(session);
             }
         } catch (IOException e) {
             if (null != session) {

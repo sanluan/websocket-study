@@ -14,19 +14,19 @@ import org.microprofile.websocket.utils.MessageUtils;
 public class WebSocketClient implements Closeable {
     private SocketClient socketClient;
 
-    public WebSocketClient(String host, int prot, MessageHandler messageHandler) throws IOException {
+    public WebSocketClient(String host, int port, MessageHandler messageHandler) throws IOException {
         if (null == messageHandler) {
             throw new IllegalArgumentException("messageHandler can't be null");
         }
-        this.socketClient = new SocketClient(host, prot, Executors.newFixedThreadPool(1),
+        this.socketClient = new SocketClient(host, port, Executors.newFixedThreadPool(1),
                 new WebSocketProtocolHandler(messageHandler, false));
-        HttpProtocolUtils.sendHandshake(socketClient.getSocketChannel());
+        HttpProtocolUtils.sendHandshake(socketClient.getSocketChannel(), host, port);
     }
 
     public void listen() throws IOException {
         socketClient.listen();
     }
-    
+
     public void asyncListen() throws IOException {
         socketClient.asyncListen();
     }
