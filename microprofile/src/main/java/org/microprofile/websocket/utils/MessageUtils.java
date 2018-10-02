@@ -54,19 +54,24 @@ public class MessageUtils {
                 byteBuffer.get(payloadLenngthByte);
                 payloadLen = byteArrayToInt(payloadLenngthByte);
             }
-            byte[] array = new byte[payloadLen];
-            if (hasMask) {
-                byte[] mask = new byte[4];
-                byteBuffer.get(mask).get(array);
-                for (int i = 0; i < array.length; i++) {
-                    array[i] = (byte) (array[i] ^ mask[i % 4]);
+            if (hasMask && payloadLen + 4 <= byteBuffer.capacity() - byteBuffer.position()
+                    || payloadLen <= byteBuffer.capacity() - byteBuffer.position()) {
+                byte[] array = new byte[payloadLen];
+                if (hasMask) {
+                    byte[] mask = new byte[4];
+                    byteBuffer.get(mask).get(array);
+                    for (int i = 0; i < array.length; i++) {
+                        array[i] = (byte) (array[i] ^ mask[i % 4]);
+                    }
+                } else {
+                    byteBuffer.get(array);
                 }
+                byteBuffer.clear();
+                Message message = new Message(fin, rsv, opCode, array);
+                return message;
             } else {
-                byteBuffer.get(array);
+                return null;
             }
-            byteBuffer.clear();
-            Message message = new Message(fin, rsv, opCode, array);
-            return message;
         }
     }
 

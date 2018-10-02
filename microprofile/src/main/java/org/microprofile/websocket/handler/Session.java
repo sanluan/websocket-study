@@ -1,6 +1,7 @@
 package org.microprofile.websocket.handler;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.UUID;
 
@@ -9,6 +10,7 @@ import org.microprofile.websocket.utils.MessageUtils;
 public class Session {
     private SocketChannel socketChannel;
     private String id;
+    private ByteBuffer lastMessage;
 
     public Session(SocketChannel socketChannel) {
         this.socketChannel = socketChannel;
@@ -21,6 +23,14 @@ public class Session {
 
     public void setId(String id) {
         this.id = id;
+    }
+
+    public ByteBuffer getLastMessage() {
+        return lastMessage;
+    }
+
+    public void setLastMessage(ByteBuffer lastMessage) {
+        this.lastMessage = lastMessage;
     }
 
     public boolean isOpen() {

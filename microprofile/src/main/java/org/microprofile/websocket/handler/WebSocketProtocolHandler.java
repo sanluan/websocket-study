@@ -39,17 +39,33 @@ public class WebSocketProtocolHandler implements ProtocolHandler {
                 }
                 handler.onOpen(session);
             } else {
-                Message message = MessageUtils.processMessage(byteBuffer);
-                if (MessageUtils.isControl(message.getOpCode())) {
-                    if (Message.OPCODE_CLOSE == message.getOpCode()) {
-                        close(key);
-                    } else if (Message.OPCODE_PING == message.getOpCode()) {
-                        Message pongMessage = new Message(message.isFin(), message.getRsv(), Message.OPCODE_PONG,
-                                message.getPayload());
-                        socketChannel.write(MessageUtils.wrapMessage(pongMessage, false, true));
+                ByteBuffer lastMessage = session.getLastMessage();
+                Message message;
+                if (null != lastMessage) {
+                    session.setLastMessage(null);
+                    ByteBuffer newByteBuffer = ByteBuffer.allocate(lastMessage.limit() + byteBuffer.position());
+                    newByteBuffer.put(lastMessage.array());
+                    byteBuffer.flip();
+                    while (byteBuffer.hasRemaining()) {
+                        newByteBuffer.put(byteBuffer.get());
                     }
+                    byteBuffer = newByteBuffer;
+                }
+                message = MessageUtils.processMessage(byteBuffer);
+                if (null == message) {
+                    session.setLastMessage(byteBuffer);
                 } else {
-                    handler.onMessage(message, session);
+                    if (MessageUtils.isControl(message.getOpCode())) {
+                        if (Message.OPCODE_CLOSE == message.getOpCode()) {
+                            close(key);
+                        } else if (Message.OPCODE_PING == message.getOpCode()) {
+                            Message pongMessage = new Message(message.isFin(), message.getRsv(), Message.OPCODE_PONG,
+                                    message.getPayload());
+                            socketChannel.write(MessageUtils.wrapMessage(pongMessage, false, true));
+                        }
+                    } else {
+                        handler.onMessage(message, session);
+                    }
                 }
             }
         } catch (IOException e) {
