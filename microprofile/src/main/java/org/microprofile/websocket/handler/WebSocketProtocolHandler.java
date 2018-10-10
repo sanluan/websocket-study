@@ -29,16 +29,16 @@ public class WebSocketProtocolHandler implements ProtocolHandler {
     @Override
     public void read(SelectionKey key, ByteBuffer byteBuffer) throws IOException {
         SocketChannel socketChannel = (SocketChannel) key.channel();
-        Session session = (Session) key.attachment();
-        if (null == session) {
-            session = new Session(socketChannel);
-            key.attach(session);
+        WebSocketFrame frame = (WebSocketFrame) key.attachment();
+        if (null == frame) {
+            frame = new WebSocketFrame();
+            key.attach(frame);
         }
         try {
-            if (session.isInitialized()) {
-                ByteBuffer lastMessage = session.getLastMessage();
+            if (frame.isInitialized()) {
+                ByteBuffer lastMessage = frame.getLastMessage();
                 if (null != lastMessage) {
-                    session.setLastMessage(null);
+                    frame.setLastMessage(null);
                     byteBuffer.flip();
                     ByteBuffer newByteBuffer = ByteBuffer.allocate(lastMessage.remaining() + byteBuffer.remaining());
                     newByteBuffer.put(lastMessage);
@@ -56,23 +56,24 @@ public class WebSocketProtocolHandler implements ProtocolHandler {
                             socketChannel.write(MessageUtils.wrapMessage(pongMessage, false, true));
                         }
                     } else {
-                        handler.onMessage(message, session);
+                        handler.onMessage(message, frame.getSession());
                     }
                     message = MessageUtils.processMessage(byteBuffer);
                 }
                 if (byteBuffer.hasRemaining()) {
-                    session.setLastMessage(byteBuffer);
+                    frame.setLastMessage(byteBuffer);
                 }
             } else {
                 if (server) {
                     HttpProtocolUtils.processProtocol(socketChannel, byteBuffer);
                 }
-                session.setInitialized(true);
-                handler.onOpen(session);
+                frame.setSession(new Session(socketChannel));
+                frame.setInitialized(true);
+                handler.onOpen(frame.getSession());
             }
         } catch (IOException e) {
-            if (null != session) {
-                handler.onClose(session);
+            if (null != frame && frame.isInitialized()) {
+                handler.onClose(frame.getSession());
             }
             throw new IOException(e);
         }
