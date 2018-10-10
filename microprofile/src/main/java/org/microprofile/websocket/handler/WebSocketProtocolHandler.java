@@ -37,21 +37,16 @@ public class WebSocketProtocolHandler implements ProtocolHandler {
         try {
             if (session.isInitialized()) {
                 ByteBuffer lastMessage = session.getLastMessage();
-                Message message;
                 if (null != lastMessage) {
                     session.setLastMessage(null);
-                    ByteBuffer newByteBuffer = ByteBuffer.allocate(lastMessage.limit() + byteBuffer.position());
-                    newByteBuffer.put(lastMessage.array());
                     byteBuffer.flip();
-                    while (byteBuffer.hasRemaining()) {
-                        newByteBuffer.put(byteBuffer.get());
-                    }
-                    byteBuffer = newByteBuffer;
+                    ByteBuffer newByteBuffer = ByteBuffer.allocate(lastMessage.remaining() + byteBuffer.remaining());
+                    newByteBuffer.put(lastMessage);
+                    byteBuffer = newByteBuffer.put(byteBuffer);
                 }
-                message = MessageUtils.processMessage(byteBuffer);
-                if (null == message) {
-                    session.setLastMessage(byteBuffer);
-                } else {
+                byteBuffer.flip();
+                Message message = MessageUtils.processMessage(byteBuffer);
+                while (null != message) {
                     if (MessageUtils.isControl(message.getOpCode())) {
                         if (Message.OPCODE_CLOSE == message.getOpCode()) {
                             close(key);
@@ -63,6 +58,10 @@ public class WebSocketProtocolHandler implements ProtocolHandler {
                     } else {
                         handler.onMessage(message, session);
                     }
+                    message = MessageUtils.processMessage(byteBuffer);
+                }
+                if (byteBuffer.hasRemaining()) {
+                    session.setLastMessage(byteBuffer);
                 }
             } else {
                 if (server) {

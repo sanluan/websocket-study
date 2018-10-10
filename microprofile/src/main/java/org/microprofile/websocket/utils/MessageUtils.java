@@ -20,10 +20,10 @@ public class MessageUtils {
             } catch (NoSuchAlgorithmException e) {
                 sr = new SecureRandom();
             }
+            randoms.add(sr);
         }
         byte[] result = new byte[4];
         sr.nextBytes(result);
-        randoms.add(sr);
         return result;
     }
 
@@ -32,15 +32,11 @@ public class MessageUtils {
     }
 
     public static Message processMessage(ByteBuffer byteBuffer) throws IOException {
-        byteBuffer.flip();
-        byte b = byteBuffer.get();
-        boolean fin = (b & 0x80) > 0;
-        int rsv = ((b & 0x70) >>> 4);
-        byte opCode = (byte) (b & 0xF);
-        if (isControl(opCode)) {
-            byteBuffer.clear();
-            return new Message(fin, rsv, opCode, null);
-        } else {
+        if (byteBuffer.remaining() < 2) {
+            byte b = byteBuffer.get();
+            boolean fin = (b & 0x80) > 0;
+            int rsv = ((b & 0x70) >>> 4);
+            byte opCode = (byte) (b & 0xF);
             byte b2 = byteBuffer.get();
             boolean hasMask = (b2 & 0x80) > 0;
             int payloadLen = (b2 & 0x7F);
@@ -54,8 +50,7 @@ public class MessageUtils {
                 byteBuffer.get(payloadLenngthByte);
                 payloadLen = byteArrayToInt(payloadLenngthByte);
             }
-            if (hasMask && payloadLen + 4 <= byteBuffer.capacity() - byteBuffer.position()
-                    || payloadLen <= byteBuffer.capacity() - byteBuffer.position()) {
+            if (hasMask && payloadLen + 4 <= byteBuffer.remaining() || payloadLen <= byteBuffer.remaining()) {
                 byte[] array = new byte[payloadLen];
                 if (hasMask) {
                     byte[] mask = new byte[4];
@@ -66,13 +61,18 @@ public class MessageUtils {
                 } else {
                     byteBuffer.get(array);
                 }
-                byteBuffer.clear();
-                Message message = new Message(fin, rsv, opCode, array);
-                return message;
-            } else {
-                return null;
+                if (isControl(opCode)) {
+                    if (fin && payloadLen <= 125) {
+                        return new Message(fin, rsv, opCode, null);
+                    } else {
+                        return new Message(fin, rsv, Message.OPCODE_CLOSE, null);
+                    }
+                } else {
+                    return new Message(fin, rsv, opCode, array);
+                }
             }
         }
+        return null;
     }
 
     public static String byte2bits(byte b) {
