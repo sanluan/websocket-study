@@ -58,6 +58,13 @@ public class FileListener implements FileAlterationListener {
         init();
     }
 
+    /**
+     * @return the basePath
+     */
+    public String getBasePath() {
+        return basePath;
+    }
+
     private void init() {
         this.basePath = observer.getDirectory().getAbsolutePath();
         this.observer.addListener(this);
@@ -68,7 +75,7 @@ public class FileListener implements FileAlterationListener {
     private void process(EventType eventType, File file) {
         String absolutePath = file.getAbsolutePath();
         String filePath = absolutePath.substring(basePath.length() + 1, absolutePath.length());
-        eventHandler.process(new FileEvent(eventType, filePath));
+        eventHandler.process(new FileEvent(eventType, filePath, file.length()));
     }
 
     @Override

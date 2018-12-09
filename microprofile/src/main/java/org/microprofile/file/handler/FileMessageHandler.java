@@ -36,13 +36,21 @@ public class FileMessageHandler implements MessageHandler {
                 start = 3 + length;
                 if (start <= payload.length) {
                     filePath = new String(Arrays.copyOfRange(payload, 3, start));
+                    long index = 0;
+                    long blockSize = -1;
+                    if (0 == header || 1 == header) {
+                        index = EncodeUtils.bype2Long(Arrays.copyOfRange(payload, start, start + 8));
+                        blockSize = EncodeUtils.bype2Long(Arrays.copyOfRange(payload, start + 8, start + 16));
+                    }
                     switch (header) {
                     case 0:
-                        localFileHandler.createFile(filePath, payload, start);
+                        if (-1 == blockSize) {
+                            localFileHandler.createFile(filePath, payload, start);
+                        } else {
+                            localFileHandler.modifyFile(filePath, index, blockSize, payload, start + 16);
+                        }
                         break;
                     case 1:
-                        long index = EncodeUtils.bype2Long(Arrays.copyOfRange(payload, start, start + 8));
-                        long blockSize = EncodeUtils.bype2Long(Arrays.copyOfRange(payload, start + 8, start + 16));
                         localFileHandler.modifyFile(filePath, index, blockSize, payload, start + 16);
                         break;
                     case 2:
@@ -96,26 +104,21 @@ public class FileMessageHandler implements MessageHandler {
     }
 
     public void sendFileBlockchecksumList(FileEvent event) {
-        byte[] payload = event.getFilePath().getBytes(Constants.DEFAULT_CHARSET);
-        byte[] data = new byte[payload.length + 1];
-        data[0] = event.getEventType().getCode();
-        System.arraycopy(payload, 0, data, 1, data.length);
-        sendToAll(data);
+        // TODO
     }
 
-    public void sendFileBlock(FileEvent event) {
-        byte[] payload = event.getFilePath().getBytes(Constants.DEFAULT_CHARSET);
-        byte[] data = new byte[payload.length + 1];
-        data[0] = event.getEventType().getCode();
-        System.arraycopy(payload, 0, data, 1, data.length);
-        sendToAll(data);
+    public void sendFileBlock(byte code, String filePath, long blockIndex, long blockSize, byte[] data) {
+        byte[] pathByte = filePath.getBytes(Constants.DEFAULT_CHARSET);
+        byte[] payload = new byte[1 + pathByte.length + 16 + data.length];
+        payload[0] = code;
+        System.arraycopy(pathByte, 0, payload, 1, pathByte.length);
+        System.arraycopy(EncodeUtils.long2Byte(blockIndex), 0, payload, pathByte.length + 1, 8);
+        System.arraycopy(EncodeUtils.long2Byte(blockSize), 0, payload, pathByte.length + 9, 16);
+        System.arraycopy(payload, 0, data, pathByte.length + 17, data.length);
+        sendToAll(payload);
     }
 
     public void sendFileChecksumList(FileEvent event) {
-        byte[] payload = event.getFilePath().getBytes(Constants.DEFAULT_CHARSET);
-        byte[] data = new byte[payload.length + 1];
-        data[0] = event.getEventType().getCode();
-        System.arraycopy(payload, 0, data, 1, data.length);
-        sendToAll(data);
+        // TODO
     }
 }

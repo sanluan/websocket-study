@@ -3,7 +3,46 @@ package org.microprofile.file.message;
 import java.util.List;
 
 public class FileBlockChecksumListMessage {
+    private String filePath;
+    private long blockSize;
     private List<FileBlockChecksum> fileList;
+
+    public FileBlockChecksumListMessage(String filePath, long blockSize, List<FileBlockChecksum> fileList) {
+        super();
+        this.filePath = filePath;
+        this.blockSize = blockSize;
+        this.fileList = fileList;
+    }
+
+    /**
+     * @return the filePath
+     */
+    public String getFilePath() {
+        return filePath;
+    }
+
+    /**
+     * @param filePath
+     *            the filePath to set
+     */
+    public void setFilePath(String filePath) {
+        this.filePath = filePath;
+    }
+
+    /**
+     * @return the blockSize
+     */
+    public long getBlockSize() {
+        return blockSize;
+    }
+
+    /**
+     * @param blockSize
+     *            the blockSize to set
+     */
+    public void setBlockSize(long blockSize) {
+        this.blockSize = blockSize;
+    }
 
     /**
      * @return the fileList
@@ -21,24 +60,13 @@ public class FileBlockChecksumListMessage {
     }
 
     public static class FileBlockChecksum {
-        private String filePath;
         private long index;
-        private long blockSize;
         private byte[] checksum;
 
-        /**
-         * @return the filePath
-         */
-        public String getFilePath() {
-            return filePath;
-        }
-
-        /**
-         * @param filePath
-         *            the filePath to set
-         */
-        public void setFilePath(String filePath) {
-            this.filePath = filePath;
+        public FileBlockChecksum(long index, byte[] checksum) {
+            super();
+            this.index = index;
+            this.checksum = checksum;
         }
 
         /**
@@ -54,21 +82,6 @@ public class FileBlockChecksumListMessage {
          */
         public void setIndex(long index) {
             this.index = index;
-        }
-
-        /**
-         * @return the blockSize
-         */
-        public long getBlockSize() {
-            return blockSize;
-        }
-
-        /**
-         * @param blockSize
-         *            the blockSize to set
-         */
-        public void setBlockSize(long blockSize) {
-            this.blockSize = blockSize;
         }
 
         /**

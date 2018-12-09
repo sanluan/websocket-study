@@ -3,11 +3,13 @@ package org.microprofile.file.event;
 public class FileEvent {
     private EventType eventType;
     private String filePath;
+    private long fileSize;
 
-    public FileEvent(EventType eventType, String filePath) {
+    public FileEvent(EventType eventType, String filePath, long fileSize) {
         super();
         this.eventType = eventType;
         this.filePath = filePath;
+        this.fileSize = fileSize;
     }
 
     public EventType getEventType() {
@@ -26,9 +28,24 @@ public class FileEvent {
         this.filePath = filePath;
     }
 
+    /**
+     * @return the fileSize
+     */
+    public long getFileSize() {
+        return fileSize;
+    }
+
+    /**
+     * @param fileSize
+     *            the fileSize to set
+     */
+    public void setFileSize(long fileSize) {
+        this.fileSize = fileSize;
+    }
+
     @Override
     public String toString() {
-        return "FileEvent [eventType=" + eventType + ", filePath=" + filePath + "]";
+        return "FileEvent [eventType=" + eventType + ", filePath=" + filePath + ", fileSize=" + fileSize + "]";
     }
 
     @Override
