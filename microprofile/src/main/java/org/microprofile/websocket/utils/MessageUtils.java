@@ -32,7 +32,7 @@ public class MessageUtils {
     }
 
     public static Message processMessage(ByteBuffer byteBuffer) throws IOException {
-        if (byteBuffer.remaining() < 2) {
+        if (2 < byteBuffer.remaining()) {
             byte b = byteBuffer.get();
             boolean fin = (b & 0x80) > 0;
             int rsv = ((b & 0x70) >>> 4);
@@ -40,9 +40,9 @@ public class MessageUtils {
             byte b2 = byteBuffer.get();
             boolean hasMask = (b2 & 0x80) > 0;
             int payloadLen = (b2 & 0x7F);
-            if (payloadLen >= 126) {
+            if (126 <= payloadLen) {
                 byte[] payloadLenngthByte;
-                if (payloadLen == 126) {
+                if (126 == payloadLen) {
                     payloadLenngthByte = new byte[2];
                 } else {
                     payloadLenngthByte = new byte[8];
@@ -116,7 +116,7 @@ public class MessageUtils {
         } else if (length < 65536) {
             headLenth += 3;
         } else {
-            headLenth += 8;
+            headLenth += 9;
         }
         ByteBuffer byteBuffer = ByteBuffer.allocate(headLenth + length);
         byteBuffer.put(b);

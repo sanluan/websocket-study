@@ -2,6 +2,8 @@ package org.microprofile.file.listener;
 
 import java.io.File;
 import java.io.FileFilter;
+import java.util.LinkedList;
+import java.util.List;
 
 import org.apache.commons.io.IOCase;
 import org.apache.commons.io.monitor.FileAlterationListener;
@@ -10,6 +12,7 @@ import org.apache.commons.io.monitor.FileAlterationObserver;
 import org.microprofile.file.event.EventHandler;
 import org.microprofile.file.event.FileEvent;
 import org.microprofile.file.event.FileEvent.EventType;
+import org.microprofile.file.handler.LocalFileAdaptor;
 
 /**
  * FileListener
@@ -17,16 +20,17 @@ import org.microprofile.file.event.FileEvent.EventType;
  */
 public class FileListener implements FileAlterationListener {
     private String basePath;
-    private EventHandler eventHandler;
+    private List<EventHandler> eventHandlers;
     private FileAlterationObserver observer;
     private FileAlterationMonitor fileMonitor;
+    private LocalFileAdaptor localFileHandler;
 
     /**
      * @param listenPath
      * @param eventHandlers
      */
-    public FileListener(String listenPath, EventHandler eventHandler) {
-        this(new FileAlterationObserver(listenPath), eventHandler);
+    public FileListener(String listenPath) {
+        this(new FileAlterationObserver(listenPath));
     }
 
     /**
@@ -34,8 +38,8 @@ public class FileListener implements FileAlterationListener {
      * @param fileFilter
      * @param eventHandlers
      */
-    public FileListener(String listenPath, final FileFilter fileFilter, EventHandler eventHandler) {
-        this(new FileAlterationObserver(listenPath, fileFilter), eventHandler);
+    public FileListener(String listenPath, final FileFilter fileFilter) {
+        this(new FileAlterationObserver(listenPath, fileFilter));
     }
 
     /**
@@ -44,25 +48,14 @@ public class FileListener implements FileAlterationListener {
      * @param caseSensitivity
      * @param eventHandlers
      */
-    public FileListener(String listenPath, final FileFilter fileFilter, final IOCase caseSensitivity, EventHandler eventHandler) {
-        this(new FileAlterationObserver(listenPath, fileFilter, caseSensitivity), eventHandler);
+    public FileListener(String listenPath, final FileFilter fileFilter, final IOCase caseSensitivity) {
+        this(new FileAlterationObserver(listenPath, fileFilter, caseSensitivity));
     }
 
-    private FileListener(FileAlterationObserver observer, EventHandler eventHandler) {
+    private FileListener(FileAlterationObserver observer) {
         super();
-        if (null == eventHandler) {
-            throw new IllegalArgumentException("event handler canb't be null");
-        }
         this.observer = observer;
-        this.eventHandler = eventHandler;
         init();
-    }
-
-    /**
-     * @return the basePath
-     */
-    public String getBasePath() {
-        return basePath;
     }
 
     private void init() {
@@ -72,10 +65,24 @@ public class FileListener implements FileAlterationListener {
         this.fileMonitor.addObserver(observer);
     }
 
+    /**
+     * @return the localFileHandler
+     */
+    public LocalFileAdaptor getLocalFileHandler() {
+        if (null == localFileHandler) {
+            localFileHandler = new LocalFileAdaptor(basePath);
+        }
+        return localFileHandler;
+    }
+
     private void process(EventType eventType, File file) {
-        String absolutePath = file.getAbsolutePath();
-        String filePath = absolutePath.substring(basePath.length() + 1, absolutePath.length());
-        eventHandler.process(new FileEvent(eventType, filePath, file.length()));
+        if (null != eventHandlers) {
+            String absolutePath = file.getAbsolutePath();
+            String filePath = absolutePath.substring(basePath.length() + 1, absolutePath.length());
+            for (EventHandler eventHandler : eventHandlers) {
+                eventHandler.process(new FileEvent(eventType, filePath, file.length()));
+            }
+        }
     }
 
     @Override
@@ -114,6 +121,20 @@ public class FileListener implements FileAlterationListener {
 
     @Override
     public void onStop(FileAlterationObserver observer) {
+    }
+
+    /**
+     * @param eventHandler
+     *            the eventHandler to add
+     */
+    public void addEventHandler(EventHandler eventHandler) {
+        if (null != eventHandler) {
+            if (null == this.eventHandlers) {
+                this.eventHandlers = new LinkedList<>();
+            }
+            this.eventHandlers.add(eventHandler);
+            localFileHandler.addEventHandler(eventHandler);
+        }
     }
 
     /**
