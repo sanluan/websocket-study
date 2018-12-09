@@ -1,70 +1,128 @@
 package org.microprofile.file.listener;
 
 import java.io.File;
+import java.io.FileFilter;
 
-import org.apache.commons.io.monitor.FileAlterationListenerAdaptor;
+import org.apache.commons.io.IOCase;
+import org.apache.commons.io.monitor.FileAlterationListener;
+import org.apache.commons.io.monitor.FileAlterationMonitor;
 import org.apache.commons.io.monitor.FileAlterationObserver;
+import org.microprofile.file.handler.EventHandler;
+import org.microprofile.file.handler.EventType;
 
 /**
  * FileListener
  * 
  */
-public class FileListener extends FileAlterationListenerAdaptor {
+public class FileListener implements FileAlterationListener {
+    private String basePath;
+    private EventHandler[] eventHandlers;
+    private FileAlterationObserver observer;
+    private FileAlterationMonitor fileMonitor;
+
     /**
-     * 文件创建执行
+     * @param listenPath
+     * @param eventHandlers
      */
+    public FileListener(String listenPath, EventHandler... eventHandlers) {
+        this(new FileAlterationObserver(listenPath), eventHandlers);
+    }
+
+    /**
+     * @param listenPath
+     * @param fileFilter
+     * @param eventHandlers
+     */
+    public FileListener(String listenPath, final FileFilter fileFilter, EventHandler... eventHandlers) {
+        this(new FileAlterationObserver(listenPath, fileFilter), eventHandlers);
+    }
+
+    /**
+     * @param listenPath
+     * @param fileFilter
+     * @param caseSensitivity
+     * @param eventHandlers
+     */
+    public FileListener(String listenPath, final FileFilter fileFilter, final IOCase caseSensitivity,
+            EventHandler... eventHandlers) {
+        this(new FileAlterationObserver(listenPath, fileFilter, caseSensitivity), eventHandlers);
+    }
+
+    private FileListener(FileAlterationObserver observer, EventHandler... eventHandlers) {
+        super();
+        if (null == eventHandlers) {
+            throw new IllegalArgumentException("event handler canb't be null");
+        }
+        this.observer = observer;
+        this.eventHandlers = eventHandlers;
+        init();
+    }
+
+    private void init() {
+        this.basePath = observer.getDirectory().getAbsolutePath();
+        this.observer.addListener(this);
+        this.fileMonitor = new FileAlterationMonitor();
+        this.fileMonitor.addObserver(observer);
+    }
+
+    private void process(EventType event, File file) {
+        String absolutePath = file.getAbsolutePath();
+        String filePath = absolutePath.substring(basePath.length()+1, absolutePath.length());
+        for (EventHandler eventHandler : eventHandlers) {
+            eventHandler.process(event, filePath);
+        }
+    }
+
     @Override
     public void onFileCreate(File file) {
-        System.out.println("create file:" + file.getAbsolutePath());
+        process(EventType.FILE_CREATE, file);
     }
 
-    /**
-     * 文件创建修改
-     */
     @Override
     public void onFileChange(File file) {
-        System.out.println("modify file:" + file.getAbsolutePath());
+        process(EventType.FILE_MODIFY, file);
     }
 
-    /**
-     * 文件删除
-     */
     @Override
     public void onFileDelete(File file) {
-        System.out.println("delete file:" + file.getAbsolutePath());
+        process(EventType.FILE_DELETE, file);
     }
 
-    /**
-     * 目录创建
-     */
     @Override
     public void onDirectoryCreate(File directory) {
-        System.out.println("create dir:" + directory.getAbsolutePath());
-    }
+        process(EventType.DIRECTORY_CREATE, directory);
+    }   
 
-    /**
-     * 目录修改
-     */
     @Override
     public void onDirectoryChange(File directory) {
-        System.out.println("modify dir:" + directory.getAbsolutePath());
     }
 
-    /**
-     * 目录删除
-     */
     @Override
     public void onDirectoryDelete(File directory) {
-        System.out.println("delete dir:" + directory.getAbsolutePath());
+        process(EventType.DIRECTORY_DELETE, directory);
     }
 
     @Override
     public void onStart(FileAlterationObserver observer) {
-        super.onStart(observer);
+
     }
 
     @Override
     public void onStop(FileAlterationObserver observer) {
-        super.onStop(observer);
     }
+
+    /**
+     * @throws Exception
+     */
+    public void start() throws Exception {
+        this.fileMonitor.start();
+    }
+
+    /**
+     * @throws Exception
+     */
+    public void stop() throws Exception {
+        this.fileMonitor.stop();
+    }
+
 }
