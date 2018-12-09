@@ -7,7 +7,7 @@ import java.nio.channels.SocketChannel;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
-import org.microprofile.common.utils.Base64Utils;
+import org.microprofile.common.utils.EncodeUtils;
 
 public class HttpProtocolUtils {
     private static final String HTTP_ERROR = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/html\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n";
@@ -29,7 +29,7 @@ public class HttpProtocolUtils {
             String new_key = key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
             byte[] key_sha1 = sha1(new_key);
             StringBuilder sb = new StringBuilder(HTTP_WEBSOCKET_RESPONSE);
-            sb.append(Base64Utils.encode(key_sha1)).append("\r\n\r\n");
+            sb.append(EncodeUtils.base64Encode(key_sha1)).append("\r\n\r\n");
             send(client, sb.toString());
         } else {
             send(client, HTTP_ERROR);

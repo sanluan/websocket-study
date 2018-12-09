@@ -7,8 +7,9 @@ import org.apache.commons.io.IOCase;
 import org.apache.commons.io.monitor.FileAlterationListener;
 import org.apache.commons.io.monitor.FileAlterationMonitor;
 import org.apache.commons.io.monitor.FileAlterationObserver;
-import org.microprofile.file.handler.EventHandler;
-import org.microprofile.file.handler.EventType;
+import org.microprofile.file.event.EventHandler;
+import org.microprofile.file.event.FileEvent;
+import org.microprofile.file.event.FileEvent.EventType;
 
 /**
  * FileListener
@@ -16,7 +17,7 @@ import org.microprofile.file.handler.EventType;
  */
 public class FileListener implements FileAlterationListener {
     private String basePath;
-    private EventHandler[] eventHandlers;
+    private EventHandler eventHandler;
     private FileAlterationObserver observer;
     private FileAlterationMonitor fileMonitor;
 
@@ -24,8 +25,8 @@ public class FileListener implements FileAlterationListener {
      * @param listenPath
      * @param eventHandlers
      */
-    public FileListener(String listenPath, EventHandler... eventHandlers) {
-        this(new FileAlterationObserver(listenPath), eventHandlers);
+    public FileListener(String listenPath, EventHandler eventHandler) {
+        this(new FileAlterationObserver(listenPath), eventHandler);
     }
 
     /**
@@ -33,8 +34,8 @@ public class FileListener implements FileAlterationListener {
      * @param fileFilter
      * @param eventHandlers
      */
-    public FileListener(String listenPath, final FileFilter fileFilter, EventHandler... eventHandlers) {
-        this(new FileAlterationObserver(listenPath, fileFilter), eventHandlers);
+    public FileListener(String listenPath, final FileFilter fileFilter, EventHandler eventHandler) {
+        this(new FileAlterationObserver(listenPath, fileFilter), eventHandler);
     }
 
     /**
@@ -43,18 +44,17 @@ public class FileListener implements FileAlterationListener {
      * @param caseSensitivity
      * @param eventHandlers
      */
-    public FileListener(String listenPath, final FileFilter fileFilter, final IOCase caseSensitivity,
-            EventHandler... eventHandlers) {
-        this(new FileAlterationObserver(listenPath, fileFilter, caseSensitivity), eventHandlers);
+    public FileListener(String listenPath, final FileFilter fileFilter, final IOCase caseSensitivity, EventHandler eventHandler) {
+        this(new FileAlterationObserver(listenPath, fileFilter, caseSensitivity), eventHandler);
     }
 
-    private FileListener(FileAlterationObserver observer, EventHandler... eventHandlers) {
+    private FileListener(FileAlterationObserver observer, EventHandler eventHandler) {
         super();
-        if (null == eventHandlers) {
+        if (null == eventHandler) {
             throw new IllegalArgumentException("event handler canb't be null");
         }
         this.observer = observer;
-        this.eventHandlers = eventHandlers;
+        this.eventHandler = eventHandler;
         init();
     }
 
@@ -65,12 +65,10 @@ public class FileListener implements FileAlterationListener {
         this.fileMonitor.addObserver(observer);
     }
 
-    private void process(EventType event, File file) {
+    private void process(EventType eventType, File file) {
         String absolutePath = file.getAbsolutePath();
-        String filePath = absolutePath.substring(basePath.length()+1, absolutePath.length());
-        for (EventHandler eventHandler : eventHandlers) {
-            eventHandler.process(event, filePath);
-        }
+        String filePath = absolutePath.substring(basePath.length() + 1, absolutePath.length());
+        eventHandler.process(new FileEvent(eventType, filePath));
     }
 
     @Override
@@ -91,7 +89,7 @@ public class FileListener implements FileAlterationListener {
     @Override
     public void onDirectoryCreate(File directory) {
         process(EventType.DIRECTORY_CREATE, directory);
-    }   
+    }
 
     @Override
     public void onDirectoryChange(File directory) {

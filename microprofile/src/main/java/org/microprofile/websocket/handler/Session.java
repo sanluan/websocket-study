@@ -7,12 +7,12 @@ import java.util.UUID;
 import org.microprofile.websocket.utils.MessageUtils;
 
 public class Session {
-    private SocketChannel socketChannel;
     private String id;
+    private SocketChannel socketChannel;
 
     public Session(SocketChannel socketChannel) {
-        this.socketChannel = socketChannel;
         this.id = UUID.randomUUID().toString();
+        this.socketChannel = socketChannel;
     }
 
     public String getId() {
