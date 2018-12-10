@@ -18,20 +18,26 @@ import java.util.List;
 
 import org.apache.commons.io.FileUtils;
 import org.microprofile.common.utils.EncodeUtils;
-import org.microprofile.file.message.FileChecksumMessage.FileChecksum;
+import org.microprofile.file.message.FileChecksum;
 
 public class LocalFileAdaptor {
-    private String basePath;
 
-    public LocalFileAdaptor(String basePath) {
+    private String basePath;
+    private int blockSize;
+
+    public LocalFileAdaptor(String basePath, int blockSize) {
         super();
         this.basePath = basePath;
+        this.blockSize = blockSize;
     }
 
+    /**
+     * @return
+     */
     public List<FileChecksum> getFileChecksumList() {
         List<FileChecksum> result = new LinkedList<>();
         try {
-            Files.walkFileTree(Paths.get(basePath), new FilterFilesVisitor(result, this));
+            Files.walkFileTree(Paths.get(basePath), new ChecksumFilesVisitor(result, this));
         } catch (IOException e) {
         }
         return result;
@@ -110,8 +116,19 @@ public class LocalFileAdaptor {
         return file.length();
     }
 
+    /**
+     * @param filePath
+     * @return
+     */
     public File getFile(String filePath) {
         return new File(basePath, filePath);
+    }
+    
+    /**
+     * @return the blockSize
+     */
+    public int getBlockSize() {
+        return blockSize;
     }
 
     public String getRelativeFilePath(File file) {
@@ -119,12 +136,12 @@ public class LocalFileAdaptor {
         return absolutePath.substring(basePath.length() + 1, absolutePath.length());
     }
 
-    private static class FilterFilesVisitor extends SimpleFileVisitor<Path> {
+    private static class ChecksumFilesVisitor extends SimpleFileVisitor<Path> {
 
         private List<FileChecksum> result;
         private LocalFileAdaptor localFileAdaptor;
 
-        public FilterFilesVisitor(List<FileChecksum> result, LocalFileAdaptor localFileAdaptor) {
+        public ChecksumFilesVisitor(List<FileChecksum> result, LocalFileAdaptor localFileAdaptor) {
             this.result = result;
             this.localFileAdaptor = localFileAdaptor;
         }
@@ -142,9 +159,7 @@ public class LocalFileAdaptor {
             FileChecksum fileChecksum = new FileChecksum(localFileAdaptor.getRelativeFilePath(f), attrs.isDirectory(),
                     attrs.size());
             if (0 < attrs.size()) {
-                FileInputStream fin = null;
-                try {
-                    fin = new FileInputStream(f);
+                try (FileInputStream fin = new FileInputStream(f)) {
                     MappedByteBuffer byteBuffer = fin.getChannel().map(FileChannel.MapMode.READ_ONLY, 0, attrs.size());
                     byte[] checksum = EncodeUtils.md2(byteBuffer);
                     if (null != checksum) {
@@ -153,13 +168,6 @@ public class LocalFileAdaptor {
                     }
                 } catch (FileNotFoundException e) {
                 } catch (Exception e) {
-                } finally {
-                    if (null != fin) {
-                        try {
-                            fin.close();
-                        } catch (IOException e) {
-                        }
-                    }
                 }
             } else {
                 result.add(fileChecksum);

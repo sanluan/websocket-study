@@ -17,21 +17,16 @@ import org.microprofile.common.utils.EventQueue;
 import org.microprofile.file.event.EventHandler;
 import org.microprofile.file.event.FileEvent;
 import org.microprofile.file.event.FileEvent.EventType;
-import org.microprofile.file.message.BlockChecksumMessage.BlockChecksum;
+import org.microprofile.file.message.BlockChecksum;
 
 public class FileEventHandler implements EventHandler {
     protected final Log log = LogFactory.getLog(getClass());
-
-    /**
-     */
-    public final static int DEFULT_BLOCK_SIZE = 1024 * 10;
 
     public final static int DEFULT_CACHE_SIZE = 30;
     private static byte[] EMPTY_BYTE = new byte[0];
     private static byte HEADER_FILE_CREATE = EventType.FILE_CREATE.getCode();
     private static byte HEADER_FILE_MODIFY = EventType.FILE_MODIFY.getCode();
 
-    private int blockSize;
     private EventQueue<FileEvent> eventQueue;
     private LocalFileAdaptor localFileAdaptor;
     private RemoteMessageHandler remoteMessageHandler;
@@ -40,15 +35,7 @@ public class FileEventHandler implements EventHandler {
      * @param localFileHandler
      */
     public FileEventHandler(LocalFileAdaptor localFileHandler) {
-        this(localFileHandler, DEFULT_BLOCK_SIZE, DEFULT_CACHE_SIZE);
-    }
-
-    /**
-     * @param blockSize
-     * @param localFileHandler
-     */
-    public FileEventHandler(LocalFileAdaptor localFileHandler, int blockSize) {
-        this(localFileHandler, blockSize, DEFULT_CACHE_SIZE);
+        this(localFileHandler, DEFULT_CACHE_SIZE);
     }
 
     /**
@@ -56,9 +43,8 @@ public class FileEventHandler implements EventHandler {
      * @param blockSize
      * @param localFileAdaptor
      */
-    public FileEventHandler(LocalFileAdaptor localFileAdaptor, int blockSize, int cacheSize) {
+    public FileEventHandler(LocalFileAdaptor localFileAdaptor, int cacheSize) {
         super();
-        this.blockSize = blockSize;
         this.eventQueue = new EventQueue<>(cacheSize);
         this.localFileAdaptor = localFileAdaptor;
         this.remoteMessageHandler = new RemoteMessageHandler(this, localFileAdaptor);
@@ -74,19 +60,22 @@ public class FileEventHandler implements EventHandler {
             log.info("deal " + event);
             if (HEADER_FILE_CREATE == code || HEADER_FILE_MODIFY == code) {
                 File file = localFileAdaptor.getFile(event.getFilePath());
+                int blockSize = localFileAdaptor.getBlockSize();
                 if (blockSize < event.getFileSize()) {
                     try {
-                        remoteMessageHandler.sendFileBlock(code, event.getFilePath(), 0, -1, FileUtils.readFileToByteArray(file));
+                        remoteMessageHandler.sendFileBlock(null, code, event.getFilePath(), 0, -1,
+                                FileUtils.readFileToByteArray(file));
                     } catch (IOException e) {
                     }
                 } else {
                     if (HEADER_FILE_MODIFY == code) {
                         List<BlockChecksum> blockChecksumList = new LinkedList<>();
+                        long fileLength = event.getFileSize();
                         long blocks = event.getFileSize() / blockSize;
                         for (long i = 0; i <= blocks; i++) {
                             try (RandomAccessFile raf = new RandomAccessFile(file, "r"); FileChannel channel = raf.getChannel()) {
                                 if (i == blocks) {
-                                    int lastBlockSize = (int) (event.getFileSize() % blockSize);
+                                    int lastBlockSize = (int) (fileLength % blockSize);
                                     if (0 != lastBlockSize) {
                                         MappedByteBuffer byteBuffer = channel.map(FileChannel.MapMode.READ_ONLY, i * blockSize,
                                                 lastBlockSize);
@@ -105,7 +94,8 @@ public class FileEventHandler implements EventHandler {
                             }
                         }
                         if (!blockChecksumList.isEmpty()) {
-                            remoteMessageHandler.sendBlockchecksumList(event.getFilePath(), blockSize, blockChecksumList);
+                            remoteMessageHandler.sendBlockchecksumList(null, event.getFilePath(), fileLength, blockSize,
+                                    blockChecksumList);
                         }
                     } else {
                         long blocks = event.getFileSize() / blockSize;
@@ -117,14 +107,15 @@ public class FileEventHandler implements EventHandler {
                                     if (0 != lastBlockSize) {
                                         byte[] lastBlock = new byte[lastBlockSize];
                                         raf.read(lastBlock);
-                                        remoteMessageHandler.sendFileBlock(code, event.getFilePath(), i, blockSize, lastBlock);
+                                        remoteMessageHandler.sendFileBlock(null, code, event.getFilePath(), i, blockSize,
+                                                lastBlock);
                                     } else if (0 == blocks) {
-                                        remoteMessageHandler.sendFileBlock(code, event.getFilePath(), 0, -1, EMPTY_BYTE);
+                                        remoteMessageHandler.sendFileBlock(null, code, event.getFilePath(), 0, -1, EMPTY_BYTE);
                                     }
                                 } else {
                                     raf.seek(i * blockSize);
                                     raf.read(data);
-                                    remoteMessageHandler.sendFileBlock(code, event.getFilePath(), i, blockSize, data);
+                                    remoteMessageHandler.sendFileBlock(null, code, event.getFilePath(), i, blockSize, data);
                                 }
                             }
                         } catch (FileNotFoundException e) {

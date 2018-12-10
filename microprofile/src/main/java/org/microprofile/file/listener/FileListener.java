@@ -19,6 +19,10 @@ import org.microprofile.file.handler.LocalFileAdaptor;
  * 
  */
 public class FileListener implements FileAlterationListener {
+    /**
+     */
+    public final static int DEFULT_BLOCK_SIZE = 1024 * 10;
+
     private String basePath;
     private List<EventHandler> eventHandlers;
     private FileAlterationObserver observer;
@@ -29,15 +33,15 @@ public class FileListener implements FileAlterationListener {
      * @param listenPath
      */
     public FileListener(String listenPath) {
-        this(new FileAlterationObserver(listenPath));
+        this(new FileAlterationObserver(listenPath), DEFULT_BLOCK_SIZE);
     }
 
     /**
      * @param listenPath
      * @param fileFilter
      */
-    public FileListener(String listenPath, final FileFilter fileFilter) {
-        this(new FileAlterationObserver(listenPath, fileFilter));
+    public FileListener(String listenPath, int blockSize, final FileFilter fileFilter) {
+        this(new FileAlterationObserver(listenPath, fileFilter), blockSize);
     }
 
     /**
@@ -45,22 +49,22 @@ public class FileListener implements FileAlterationListener {
      * @param fileFilter
      * @param caseSensitivity
      */
-    public FileListener(String listenPath, final FileFilter fileFilter, final IOCase caseSensitivity) {
-        this(new FileAlterationObserver(listenPath, fileFilter, caseSensitivity));
+    public FileListener(String listenPath, int blockSize, final FileFilter fileFilter, final IOCase caseSensitivity) {
+        this(new FileAlterationObserver(listenPath, fileFilter, caseSensitivity), blockSize);
     }
 
-    private FileListener(FileAlterationObserver observer) {
+    private FileListener(FileAlterationObserver observer, int blockSize) {
         super();
         this.observer = observer;
-        init();
+        init(blockSize);
     }
 
-    private void init() {
+    private void init(int blockSize) {
         this.basePath = observer.getDirectory().getAbsolutePath();
         this.observer.addListener(this);
         this.fileMonitor = new FileAlterationMonitor();
         this.fileMonitor.addObserver(observer);
-        this.localFileAdaptor = new LocalFileAdaptor(basePath);
+        this.localFileAdaptor = new LocalFileAdaptor(basePath, blockSize);
     }
 
     private void process(EventType eventType, File file) {
