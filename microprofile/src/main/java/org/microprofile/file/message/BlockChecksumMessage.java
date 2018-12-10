@@ -2,16 +2,16 @@ package org.microprofile.file.message;
 
 import java.util.List;
 
-public class FileBlockChecksumListMessage {
+public class BlockChecksumMessage {
     private String filePath;
     private long blockSize;
-    private List<FileBlockChecksum> fileList;
+    private List<BlockChecksum> blockList;
 
-    public FileBlockChecksumListMessage(String filePath, long blockSize, List<FileBlockChecksum> fileList) {
+    public BlockChecksumMessage(String filePath, long blockSize, List<BlockChecksum> blockList) {
         super();
         this.filePath = filePath;
         this.blockSize = blockSize;
-        this.fileList = fileList;
+        this.blockList = blockList;
     }
 
     /**
@@ -45,25 +45,25 @@ public class FileBlockChecksumListMessage {
     }
 
     /**
-     * @return the fileList
+     * @return the blockList
      */
-    public List<FileBlockChecksum> getFileList() {
-        return fileList;
+    public List<BlockChecksum> getBlockList() {
+        return blockList;
     }
 
     /**
-     * @param fileList
-     *            the fileList to set
+     * @param blockList
+     *            the blockList to set
      */
-    public void setFileList(List<FileBlockChecksum> fileList) {
-        this.fileList = fileList;
+    public void setBlockList(List<BlockChecksum> blockList) {
+        this.blockList = blockList;
     }
 
-    public static class FileBlockChecksum {
+    public static class BlockChecksum {
         private long index;
         private byte[] checksum;
 
-        public FileBlockChecksum(long index, byte[] checksum) {
+        public BlockChecksum(long index, byte[] checksum) {
             super();
             this.index = index;
             this.checksum = checksum;

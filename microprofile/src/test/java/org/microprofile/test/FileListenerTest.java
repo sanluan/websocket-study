@@ -1,6 +1,8 @@
 package org.microprofile.test;
 
 import org.microprofile.file.handler.FileEventHandler;
+import org.microprofile.file.handler.LocalFileAdaptor;
+import org.microprofile.file.handler.RemoteMessageHandler;
 import org.microprofile.file.listener.FileListener;
 import org.microprofile.websocket.WebSocketClient;
 import org.microprofile.websocket.WebSocketServer;
@@ -11,15 +13,19 @@ public class FileListenerTest {
         try {
 
             FileListener listener1 = new FileListener("D:/aaa/");
-            FileEventHandler fileEventHandler1 = new FileEventHandler(listener1.getLocalFileHandler());
-            WebSocketServer wss = new WebSocketServer(1000, 1, fileEventHandler1);
+            LocalFileAdaptor localFileHandler1 = new LocalFileAdaptor(listener1.getBasePath());
+            FileEventHandler fileEventHandler1 = new FileEventHandler(localFileHandler1);
+            RemoteMessageHandler remoteMessageHandler1 = new RemoteMessageHandler(fileEventHandler1);
+            WebSocketServer wss = new WebSocketServer(1000, 1, remoteMessageHandler1);
             wss.asyncListen();
             listener1.addEventHandler(fileEventHandler1);
             listener1.start();
 
             FileListener listener = new FileListener("D:/bbb/");
-            FileEventHandler fileEventHandler = new FileEventHandler(listener.getLocalFileHandler());
-            WebSocketClient ws = new WebSocketClient("localhost", 1000, fileEventHandler);
+            LocalFileAdaptor localFileHandler = new LocalFileAdaptor(listener.getBasePath());
+            FileEventHandler fileEventHandler = new FileEventHandler(localFileHandler);
+            RemoteMessageHandler remoteMessageHandler = new RemoteMessageHandler(fileEventHandler);
+            WebSocketClient ws = new WebSocketClient("localhost", 1000, remoteMessageHandler);
 
             listener.addEventHandler(fileEventHandler);
             listener.start();

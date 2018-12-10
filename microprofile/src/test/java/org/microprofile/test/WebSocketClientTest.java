@@ -3,19 +3,21 @@ package org.microprofile.test;
 import java.io.IOException;
 import java.util.Scanner;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.microprofile.websocket.WebSocketClient;
-import org.microprofile.websocket.handler.Message;
 import org.microprofile.websocket.handler.MessageHandler;
 import org.microprofile.websocket.handler.Session;
 
 public class WebSocketClientTest {
+    protected static final Log log = LogFactory.getLog(WebSocketClientTest.class);
 
     public static void main(String[] args) throws InterruptedException {
         try {
             WebSocketClient ws = new WebSocketClient("localhost", 1000, new ClientMessageHandler());
-            System.out.println("启动。。。");
+            log.info("启动。。。");
             new WebSocketClientThread(ws).start();
-            System.out.println("please input you message,quit to exit");
+            log.info("please input you message,quit to exit");
             Scanner in = new Scanner(System.in);
             while (true) {
                 String message = in.nextLine();
@@ -49,11 +51,17 @@ class WebSocketClientThread extends Thread {
 }
 
 class ClientMessageHandler implements MessageHandler {
+    protected final Log log = LogFactory.getLog(getClass());
 
     @Override
-    public void onMessage(Message message, Session session) throws IOException {
-        String str = new String(message.getPayload());
-        System.out.println(str);
+    public void onMessage(byte[] message, Session session) throws IOException {
+        String str = new String(message);
+        log.info(str);
+    }
+
+    @Override
+    public void onMessage(String message, Session session) throws IOException {
+        log.info(message);
     }
 
     @Override

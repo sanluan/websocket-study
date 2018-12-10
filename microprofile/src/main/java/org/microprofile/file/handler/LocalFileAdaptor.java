@@ -3,16 +3,10 @@ package org.microprofile.file.handler;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.util.LinkedList;
-import java.util.List;
 
 import org.apache.commons.io.FileUtils;
-import org.microprofile.file.event.EventHandler;
-import org.microprofile.file.event.FileEvent;
-import org.microprofile.file.event.FileEvent.EventType;
 
 public class LocalFileAdaptor {
-    private List<EventHandler> eventHandlers;
     private String basePath;
 
     public LocalFileAdaptor(String basePath) {
@@ -24,17 +18,19 @@ public class LocalFileAdaptor {
      * @param filePath
      * @param data
      * @param start
+     * @return file length
      */
-    public void createFile(String filePath, byte[] data, int start) {
+    public long createFile(String filePath, byte[] data, int start) {
+        File file = getFile(filePath);
         try {
             if (start >= data.length) {
-                getFile(filePath).createNewFile();
+                file.createNewFile();
             } else {
-                FileUtils.writeByteArrayToFile(getFile(filePath), data, start, data.length);
+                FileUtils.writeByteArrayToFile(file, data, start, data.length);
             }
-            cache(new FileEvent(EventType.FILE_CREATE, filePath, 0));
         } catch (IOException e) {
         }
+        return file.length();
     }
 
     /**
@@ -42,70 +38,57 @@ public class LocalFileAdaptor {
      * @param blockIndex
      * @param blockSize
      * @param data
-     * @param start
+     * @param startIndex
+     * @return file length
      */
-    public void modifyFile(String filePath, long blockIndex, long blockSize, byte[] data, int start) {
+    public long modifyFile(String filePath, long blockIndex, long blockSize, byte[] data, int startIndex) {
+        File file = getFile(filePath);
         try {
-            File file = getFile(filePath);
             if (0 < blockSize) {
                 FileUtils.writeByteArrayToFile(file, data);
             } else {
                 try (RandomAccessFile raf = new RandomAccessFile(file, "rw")) {
                     raf.seek(blockIndex * blockSize);
-                    raf.write(data, start, data.length - start);
+                    raf.write(data, startIndex, data.length - startIndex);
                 }
             }
-            cache(new FileEvent(EventType.FILE_MODIFY, filePath, 0));
         } catch (IOException e) {
         }
+        return file.length();
     }
 
     /**
      * @param filePath
+     * @return file length
      */
-    public void deleteFile(String filePath) {
-        FileUtils.deleteQuietly(getFile(filePath));
-        cache(new FileEvent(EventType.FILE_DELETE, filePath, 0));
+    public long deleteFile(String filePath) {
+        File file = getFile(filePath);
+        FileUtils.deleteQuietly(file);
+        return file.length();
     }
 
     /**
      * @param filePath
+     * @return file length
      */
-    public void createDirectory(String filePath) {
-        getFile(filePath).mkdirs();
-        cache(new FileEvent(EventType.DIRECTORY_CREATE, filePath, 0));
+    public long createDirectory(String filePath) {
+        File file = getFile(filePath);
+        file.mkdirs();
+        return file.length();
     }
 
     /**
      * @param filePath
+     * @return file length
      */
-    public void deleteDirectory(String filePath) {
-        FileUtils.deleteQuietly(getFile(filePath));
-        cache(new FileEvent(EventType.DIRECTORY_DELETE, filePath, 0));
+    public long deleteDirectory(String filePath) {
+        File file = getFile(filePath);
+        FileUtils.deleteQuietly(file);
+        return file.length();
     }
 
     public File getFile(String filePath) {
         return new File(basePath, filePath);
     }
 
-    /**
-     * @param fileEventHandler
-     *            the fileEventHandler to set
-     */
-    public void addEventHandler(EventHandler eventHandler) {
-        if (null != eventHandler) {
-            if (null == this.eventHandlers) {
-                this.eventHandlers = new LinkedList<>();
-            }
-            this.eventHandlers.add(eventHandler);
-        }
-    }
-
-    private void cache(FileEvent event) {
-        if (null != eventHandlers) {
-            for (EventHandler eventHandler : eventHandlers) {
-                eventHandler.cache(event);
-            }
-        }
-    }
 }

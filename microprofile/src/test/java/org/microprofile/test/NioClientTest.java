@@ -5,15 +5,18 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.util.Scanner;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.microprofile.nio.SocketClient;
 import org.microprofile.nio.handler.ProtocolHandler;
 
 public class NioClientTest {
+    protected static final Log log = LogFactory.getLog(NioClientTest.class);
 
     public static void main(String[] arg) throws IOException, InterruptedException {
         SocketClient socketClient = new SocketClient("127.0.0.1", 1000, null, new NioClientProtocolHandler());
         new NioClientThread(socketClient).start();
-        System.out.println("please input you message,quit to exit");
+        log.info("please input you message,quit to exit");
         Scanner in = new Scanner(System.in);
         while (true) {
             String message = in.nextLine();
@@ -44,6 +47,7 @@ class NioClientThread extends Thread {
 }
 
 class NioClientProtocolHandler implements ProtocolHandler {
+    protected final Log log = LogFactory.getLog(getClass());
 
     @Override
     public void read(SelectionKey key, ByteBuffer byteBuffer) throws IOException {
@@ -51,7 +55,7 @@ class NioClientProtocolHandler implements ProtocolHandler {
         byte[] dst = new byte[byteBuffer.limit()];
         byteBuffer.get(dst);
         byteBuffer.clear();
-        System.out.println("recive:" + new String(dst));
+        log.info("recive:" + new String(dst));
     }
 
     @Override

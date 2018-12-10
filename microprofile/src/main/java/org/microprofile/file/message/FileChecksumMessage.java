@@ -2,7 +2,7 @@ package org.microprofile.file.message;
 
 import java.util.List;
 
-public class FileChecksumListMessage {
+public class FileChecksumMessage {
     private List<FileChecksum> fileList;
 
     /**
@@ -22,6 +22,7 @@ public class FileChecksumListMessage {
 
     public static class FileChecksum {
         private String filePath;
+        private boolean directory;
         private long fileSize;
         private byte[] checksum;
 
@@ -41,6 +42,21 @@ public class FileChecksumListMessage {
         }
 
         /**
+         * @return the directory
+         */
+        public boolean isDirectory() {
+            return directory;
+        }
+
+        /**
+         * @param directory
+         *            the directory to set
+         */
+        public void setDirectory(boolean directory) {
+            this.directory = directory;
+        }
+
+        /**
          * @return the fileSize
          */
         public long getFileSize() {
@@ -48,7 +64,8 @@ public class FileChecksumListMessage {
         }
 
         /**
-         * @param fileSize the fileSize to set
+         * @param fileSize
+         *            the fileSize to set
          */
         public void setFileSize(long fileSize) {
             this.fileSize = fileSize;
@@ -69,4 +86,5 @@ public class FileChecksumListMessage {
             this.checksum = checksum;
         }
     }
+
 }

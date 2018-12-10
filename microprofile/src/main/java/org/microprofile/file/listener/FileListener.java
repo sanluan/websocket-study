@@ -12,7 +12,6 @@ import org.apache.commons.io.monitor.FileAlterationObserver;
 import org.microprofile.file.event.EventHandler;
 import org.microprofile.file.event.FileEvent;
 import org.microprofile.file.event.FileEvent.EventType;
-import org.microprofile.file.handler.LocalFileAdaptor;
 
 /**
  * FileListener
@@ -23,11 +22,9 @@ public class FileListener implements FileAlterationListener {
     private List<EventHandler> eventHandlers;
     private FileAlterationObserver observer;
     private FileAlterationMonitor fileMonitor;
-    private LocalFileAdaptor localFileHandler;
 
     /**
      * @param listenPath
-     * @param eventHandlers
      */
     public FileListener(String listenPath) {
         this(new FileAlterationObserver(listenPath));
@@ -36,7 +33,6 @@ public class FileListener implements FileAlterationListener {
     /**
      * @param listenPath
      * @param fileFilter
-     * @param eventHandlers
      */
     public FileListener(String listenPath, final FileFilter fileFilter) {
         this(new FileAlterationObserver(listenPath, fileFilter));
@@ -46,7 +42,6 @@ public class FileListener implements FileAlterationListener {
      * @param listenPath
      * @param fileFilter
      * @param caseSensitivity
-     * @param eventHandlers
      */
     public FileListener(String listenPath, final FileFilter fileFilter, final IOCase caseSensitivity) {
         this(new FileAlterationObserver(listenPath, fileFilter, caseSensitivity));
@@ -65,22 +60,12 @@ public class FileListener implements FileAlterationListener {
         this.fileMonitor.addObserver(observer);
     }
 
-    /**
-     * @return the localFileHandler
-     */
-    public LocalFileAdaptor getLocalFileHandler() {
-        if (null == localFileHandler) {
-            localFileHandler = new LocalFileAdaptor(basePath);
-        }
-        return localFileHandler;
-    }
-
     private void process(EventType eventType, File file) {
         if (null != eventHandlers) {
             String absolutePath = file.getAbsolutePath();
             String filePath = absolutePath.substring(basePath.length() + 1, absolutePath.length());
             for (EventHandler eventHandler : eventHandlers) {
-                eventHandler.process(new FileEvent(eventType, filePath, file.length()));
+                eventHandler.handle(new FileEvent(eventType, filePath, file.length()));
             }
         }
     }
@@ -124,6 +109,13 @@ public class FileListener implements FileAlterationListener {
     }
 
     /**
+     * @return the basePath
+     */
+    public String getBasePath() {
+        return basePath;
+    }
+
+    /**
      * @param eventHandler
      *            the eventHandler to add
      */
@@ -133,7 +125,6 @@ public class FileListener implements FileAlterationListener {
                 this.eventHandlers = new LinkedList<>();
             }
             this.eventHandlers.add(eventHandler);
-            localFileHandler.addEventHandler(eventHandler);
         }
     }
 

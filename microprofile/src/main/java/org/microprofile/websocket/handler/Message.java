@@ -2,8 +2,8 @@ package org.microprofile.websocket.handler;
 
 public class Message {
     public static final byte OPCODE_PART = 0X0;
-    public static final byte OPCODE_PART_STRING = 0X1;
-    public static final byte OPCODE_PART_BYTE = 0X2;
+    public static final byte OPCODE_STRING = 0X1;
+    public static final byte OPCODE_BYTE = 0X2;
     public static final byte OPCODE_CLOSE = 0X8;
     public static final byte OPCODE_PING = 0X9;
     public static final byte OPCODE_PONG = 0XA;
@@ -19,20 +19,31 @@ public class Message {
         this.payload = payload;
     }
 
+    /**
+     * @return
+     */
     public boolean isFin() {
         return this.fin;
     }
 
+    /**
+     * @return
+     */
     public int getRsv() {
         return this.rsv;
     }
 
+    /**
+     * @return
+     */
     public byte getOpCode() {
         return this.opCode;
     }
 
+    /**
+     * @return
+     */
     public byte[] getPayload() {
         return this.payload;
     }
-
 }

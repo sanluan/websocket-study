@@ -85,7 +85,7 @@ public class EncodeUtils {
     }
 
     /**
-     * @param short
+     * @param input
      * @return byte array
      */
     public static byte[] short2Byte(short input) {
@@ -186,18 +186,5 @@ public class EncodeUtils {
         } catch (NoSuchAlgorithmException e) {
             return input;
         }
-    }
-
-    public static void main(String[] args) {
-        byte[] s = short2Byte(Short.MAX_VALUE);
-        System.out.println(Short.MAX_VALUE);
-        System.out.println(bype2Short(s));
-        byte[] s2 = int2Byte(Integer.MAX_VALUE);
-        System.out.println(Integer.MAX_VALUE);
-        System.out.println(bype2Int(s2));
-        byte[] s1 = long2Byte(Long.MAX_VALUE);
-        System.out.println(Long.MAX_VALUE);
-        System.out.println(bype2Long(s1));
-
     }
 }

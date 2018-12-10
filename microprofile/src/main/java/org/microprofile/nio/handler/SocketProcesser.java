@@ -55,11 +55,6 @@ public abstract class SocketProcesser implements Closeable {
     public void close() throws IOException {
         if (selector.isOpen()) {
             selector.wakeup();
-            Iterator<SelectionKey> keys = this.selector.keys().iterator();
-            while (keys.hasNext()) {
-                SelectionKey key = keys.next();
-                key.cancel();
-            }
             selector.close();
         }
         if (null != pool) {

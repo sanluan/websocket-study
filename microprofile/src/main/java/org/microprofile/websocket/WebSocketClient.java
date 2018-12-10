@@ -32,11 +32,11 @@ public class WebSocketClient implements Closeable {
     }
 
     public void sendString(String data) throws IOException {
-        send(new Message(true, 0, Message.OPCODE_PART_STRING, data.getBytes()));
+        send(new Message(true, 0, Message.OPCODE_STRING, data.getBytes()));
     }
 
     public void sendByte(byte[] data) throws IOException {
-        send(new Message(true, 0, Message.OPCODE_PART_BYTE, data));
+        send(new Message(true, 0, Message.OPCODE_BYTE, data));
     }
 
     public void send(Message message) throws IOException {
