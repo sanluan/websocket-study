@@ -1,10 +1,24 @@
 package org.microprofile.file.handler;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.LinkedList;
+import java.util.List;
 
 import org.apache.commons.io.FileUtils;
+import org.microprofile.common.utils.EncodeUtils;
+import org.microprofile.file.message.FileChecksumMessage.FileChecksum;
 
 public class LocalFileAdaptor {
     private String basePath;
@@ -12,6 +26,15 @@ public class LocalFileAdaptor {
     public LocalFileAdaptor(String basePath) {
         super();
         this.basePath = basePath;
+    }
+
+    public List<FileChecksum> getFileChecksumList() {
+        List<FileChecksum> result = new LinkedList<>();
+        try {
+            Files.walkFileTree(Paths.get(basePath), new FilterFilesVisitor(result, this));
+        } catch (IOException e) {
+        }
+        return result;
     }
 
     /**
@@ -91,4 +114,57 @@ public class LocalFileAdaptor {
         return new File(basePath, filePath);
     }
 
+    public String getRelativeFilePath(File file) {
+        String absolutePath = file.getAbsolutePath();
+        return absolutePath.substring(basePath.length() + 1, absolutePath.length());
+    }
+
+    private static class FilterFilesVisitor extends SimpleFileVisitor<Path> {
+
+        private List<FileChecksum> result;
+        private LocalFileAdaptor localFileAdaptor;
+
+        public FilterFilesVisitor(List<FileChecksum> result, LocalFileAdaptor localFileAdaptor) {
+            this.result = result;
+            this.localFileAdaptor = localFileAdaptor;
+        }
+
+        @Override
+        public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
+            FileChecksum fileChecksum = new FileChecksum(localFileAdaptor.getRelativeFilePath(dir.toFile()), false, attrs.size());
+            result.add(fileChecksum);
+            return FileVisitResult.CONTINUE;
+        }
+
+        @Override
+        public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
+            File f = file.toFile();
+            FileChecksum fileChecksum = new FileChecksum(localFileAdaptor.getRelativeFilePath(f), attrs.isDirectory(),
+                    attrs.size());
+            if (0 < attrs.size()) {
+                FileInputStream fin = null;
+                try {
+                    fin = new FileInputStream(f);
+                    MappedByteBuffer byteBuffer = fin.getChannel().map(FileChannel.MapMode.READ_ONLY, 0, attrs.size());
+                    byte[] checksum = EncodeUtils.md2(byteBuffer);
+                    if (null != checksum) {
+                        fileChecksum.setChecksum(checksum);
+                        result.add(fileChecksum);
+                    }
+                } catch (FileNotFoundException e) {
+                } catch (Exception e) {
+                } finally {
+                    if (null != fin) {
+                        try {
+                            fin.close();
+                        } catch (IOException e) {
+                        }
+                    }
+                }
+            } else {
+                result.add(fileChecksum);
+            }
+            return FileVisitResult.CONTINUE;
+        }
+    }
 }

@@ -7,9 +7,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class Constants {
     /**
      */
-    public final static int DEFULT_BLOCK_SIZE = 1024 * 10;
-    /**
-     */
     public final static String DEFAULT_CHARSET_NAME = "utf-8";
     /**
      */

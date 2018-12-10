@@ -1,6 +1,7 @@
 package org.microprofile.websocket.handler;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.UUID;
 
@@ -37,6 +38,10 @@ public class Session {
 
     public void send(Message message) throws IOException {
         socketChannel.write(MessageUtils.wrapMessage(message, false, true));
+    }
+
+    public void send(ByteBuffer byteBuffer) throws IOException {
+        socketChannel.write(byteBuffer);
     }
 
     public void close() throws IOException {

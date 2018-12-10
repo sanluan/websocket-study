@@ -48,15 +48,22 @@ public class FileEvent {
         return "FileEvent [eventType=" + eventType + ", filePath=" + filePath + ", fileSize=" + fileSize + "]";
     }
 
+    /* (non-Javadoc)
+     * @see java.lang.Object#hashCode()
+     */
     @Override
     public int hashCode() {
         final int prime = 31;
         int result = 1;
         result = prime * result + ((eventType == null) ? 0 : eventType.hashCode());
         result = prime * result + ((filePath == null) ? 0 : filePath.hashCode());
+        result = prime * result + (int) (fileSize ^ (fileSize >>> 32));
         return result;
     }
 
+    /* (non-Javadoc)
+     * @see java.lang.Object#equals(java.lang.Object)
+     */
     @Override
     public boolean equals(Object obj) {
         if (this == obj)
@@ -72,6 +79,8 @@ public class FileEvent {
             if (other.filePath != null)
                 return false;
         } else if (!filePath.equals(other.filePath))
+            return false;
+        if (fileSize != other.fileSize)
             return false;
         return true;
     }

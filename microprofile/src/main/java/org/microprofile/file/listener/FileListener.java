@@ -12,6 +12,7 @@ import org.apache.commons.io.monitor.FileAlterationObserver;
 import org.microprofile.file.event.EventHandler;
 import org.microprofile.file.event.FileEvent;
 import org.microprofile.file.event.FileEvent.EventType;
+import org.microprofile.file.handler.LocalFileAdaptor;
 
 /**
  * FileListener
@@ -22,6 +23,7 @@ public class FileListener implements FileAlterationListener {
     private List<EventHandler> eventHandlers;
     private FileAlterationObserver observer;
     private FileAlterationMonitor fileMonitor;
+    private LocalFileAdaptor localFileAdaptor;
 
     /**
      * @param listenPath
@@ -58,12 +60,12 @@ public class FileListener implements FileAlterationListener {
         this.observer.addListener(this);
         this.fileMonitor = new FileAlterationMonitor();
         this.fileMonitor.addObserver(observer);
+        this.localFileAdaptor = new LocalFileAdaptor(basePath);
     }
 
     private void process(EventType eventType, File file) {
         if (null != eventHandlers) {
-            String absolutePath = file.getAbsolutePath();
-            String filePath = absolutePath.substring(basePath.length() + 1, absolutePath.length());
+            String filePath = localFileAdaptor.getRelativeFilePath(file);
             for (EventHandler eventHandler : eventHandlers) {
                 eventHandler.handle(new FileEvent(eventType, filePath, file.length()));
             }
@@ -109,10 +111,10 @@ public class FileListener implements FileAlterationListener {
     }
 
     /**
-     * @return the basePath
+     * @return the localFileAdaptor
      */
-    public String getBasePath() {
-        return basePath;
+    public LocalFileAdaptor getLocalFileAdaptor() {
+        return localFileAdaptor;
     }
 
     /**

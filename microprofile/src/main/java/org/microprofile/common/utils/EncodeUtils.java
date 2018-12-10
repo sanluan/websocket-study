@@ -1,5 +1,6 @@
 package org.microprofile.common.utils;
 
+import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
@@ -171,6 +172,22 @@ public class EncodeUtils {
             return messageDigest.digest();
         } catch (NoSuchAlgorithmException e) {
             return input;
+        }
+    }
+
+    /**
+     */
+    /**
+     * @param byteBuffer
+     * @return md2 result
+     */
+    public static byte[] md2(ByteBuffer byteBuffer) {
+        try {
+            MessageDigest messageDigest = MessageDigest.getInstance("MD2");
+            messageDigest.update(byteBuffer);
+            return messageDigest.digest();
+        } catch (NoSuchAlgorithmException e) {
+            return null;
         }
     }
 
