@@ -105,10 +105,7 @@ public class WebSocketProtocolHandler implements ProtocolHandler {
                 handler.onOpen(frame.getSession());
             }
         } catch (IOException e) {
-            e.printStackTrace();
-            if (null != frame && frame.isInitialized()) {
-                handler.onClose(frame.getSession());
-            }
+            close(key);
         }
     }
 
@@ -118,5 +115,6 @@ public class WebSocketProtocolHandler implements ProtocolHandler {
         if (null != frame && frame.isInitialized()) {
             handler.onClose(frame.getSession());
         }
+        key.cancel();
     }
 }

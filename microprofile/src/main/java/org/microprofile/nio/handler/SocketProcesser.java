@@ -54,7 +54,6 @@ public abstract class SocketProcesser implements Closeable {
     @Override
     public void close() throws IOException {
         if (selector.isOpen()) {
-            selector.wakeup();
             selector.close();
         }
         if (null != pool) {

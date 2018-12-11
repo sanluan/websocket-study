@@ -24,9 +24,11 @@ public class FileListenerTest {
             listener.addEventHandler(fileEventHandler);
             listener.start();
             ws.asyncListen();
-            Thread.sleep(1000 * 1000);
+            Thread.sleep(1000 * 10);
             wss.close();
             ws.close();
+            listener.stop();
+            listener1.stop();
         } catch (Exception e) {
             e.printStackTrace();
         }

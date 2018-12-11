@@ -21,7 +21,7 @@ import org.microprofile.file.handler.LocalFileAdaptor;
 public class FileListener implements FileAlterationListener {
     /**
      */
-    public final static int DEFULT_BLOCK_SIZE = 1024 * 10;
+    public final static int DEFULT_BLOCK_SIZE = 1024 * 1024 * 10;
 
     private String basePath;
     private List<EventHandler> eventHandlers;
@@ -38,7 +38,7 @@ public class FileListener implements FileAlterationListener {
 
     /**
      * @param listenPath
-     * @param blockSize 
+     * @param blockSize
      * @param fileFilter
      */
     public FileListener(String listenPath, int blockSize, final FileFilter fileFilter) {
@@ -47,7 +47,7 @@ public class FileListener implements FileAlterationListener {
 
     /**
      * @param listenPath
-     * @param blockSize 
+     * @param blockSize
      * @param fileFilter
      * @param caseSensitivity
      */
@@ -62,11 +62,11 @@ public class FileListener implements FileAlterationListener {
     }
 
     private void init(int blockSize) {
-        this.basePath = observer.getDirectory().getAbsolutePath();
-        this.observer.addListener(this);
-        this.fileMonitor = new FileAlterationMonitor();
-        this.fileMonitor.addObserver(observer);
-        this.localFileAdaptor = new LocalFileAdaptor(basePath, blockSize);
+        basePath = observer.getDirectory().getAbsolutePath();
+        localFileAdaptor = new LocalFileAdaptor(basePath, blockSize);
+        fileMonitor = new FileAlterationMonitor();
+        observer.addListener(this);
+        fileMonitor.addObserver(observer);
     }
 
     private void process(EventType eventType, File file) {
@@ -129,10 +129,10 @@ public class FileListener implements FileAlterationListener {
      */
     public void addEventHandler(EventHandler eventHandler) {
         if (null != eventHandler) {
-            if (null == this.eventHandlers) {
-                this.eventHandlers = new LinkedList<>();
+            if (null == eventHandlers) {
+                eventHandlers = new LinkedList<>();
             }
-            this.eventHandlers.add(eventHandler);
+            eventHandlers.add(eventHandler);
         }
     }
 
@@ -140,14 +140,15 @@ public class FileListener implements FileAlterationListener {
      * @throws Exception
      */
     public void start() throws Exception {
-        this.fileMonitor.start();
+        fileMonitor.start();
     }
 
     /**
      * @throws Exception
      */
     public void stop() throws Exception {
-        this.fileMonitor.stop();
+        localFileAdaptor.stop();
+        fileMonitor.stop();
     }
 
 }

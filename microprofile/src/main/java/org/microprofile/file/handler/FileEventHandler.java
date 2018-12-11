@@ -72,8 +72,8 @@ public class FileEventHandler implements EventHandler {
                         List<BlockChecksum> blockChecksumList = new LinkedList<>();
                         long fileSize = event.getFileSize();
                         int blocks = (int) (event.getFileSize() / blockSize);
-                        for (int i = 0; i <= blocks; i++) {
-                            try (RandomAccessFile raf = new RandomAccessFile(file, "r"); FileChannel channel = raf.getChannel()) {
+                        try (RandomAccessFile raf = new RandomAccessFile(file, "r"); FileChannel channel = raf.getChannel()) {
+                            for (int i = 0; i <= blocks; i++) {
                                 if (i == blocks) {
                                     int lastBlockSize = (int) (fileSize % blockSize);
                                     if (0 != lastBlockSize) {
@@ -86,13 +86,10 @@ public class FileEventHandler implements EventHandler {
                                             blockSize);
                                     blockChecksumList.add(new BlockChecksum(i, EncodeUtils.md2(byteBuffer)));
                                 }
-                            } catch (FileNotFoundException e) {
-                                event.setEventType(EventType.FILE_DELETE);
-                                remoteMessageHandler.sendEvent(event);
-                                blockChecksumList.clear();
-                            } catch (IOException e) {
-                                e.printStackTrace();
                             }
+                        } catch (FileNotFoundException e) {
+                            blockChecksumList.clear();
+                        } catch (IOException e) {
                         }
                         if (!blockChecksumList.isEmpty()) {
                             remoteMessageHandler.sendBlockchecksumList(null, event.getFilePath(), fileSize, blockSize,
@@ -122,10 +119,7 @@ public class FileEventHandler implements EventHandler {
                                 }
                             }
                         } catch (FileNotFoundException e) {
-                            event.setEventType(EventType.FILE_DELETE);
-                            remoteMessageHandler.sendEvent(event);
                         } catch (IOException e) {
-                            e.printStackTrace();
                         }
                     }
                 }
