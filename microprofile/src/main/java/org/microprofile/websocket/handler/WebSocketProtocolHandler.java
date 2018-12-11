@@ -114,7 +114,7 @@ public class WebSocketProtocolHandler implements ProtocolHandler {
         WebSocketFrame frame = (WebSocketFrame) key.attachment();
         if (null != frame && frame.isInitialized()) {
             handler.onClose(frame.getSession());
+            frame.getSession().close();
         }
-        key.cancel();
     }
 }
