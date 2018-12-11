@@ -22,7 +22,7 @@ import org.microprofile.file.message.BlockChecksum;
 public class FileEventHandler implements EventHandler {
     protected final Log log = LogFactory.getLog(getClass());
 
-    public final static int DEFULT_CACHE_SIZE = 30;
+    public final static int DEFULT_CACHE_SIZE = 1000;
     private static byte[] EMPTY_BYTE = new byte[0];
     private static byte HEADER_FILE_CREATE = EventType.FILE_CREATE.getCode();
     private static byte HEADER_FILE_MODIFY = EventType.FILE_MODIFY.getCode();
@@ -70,12 +70,12 @@ public class FileEventHandler implements EventHandler {
                 } else {
                     if (HEADER_FILE_MODIFY == code) {
                         List<BlockChecksum> blockChecksumList = new LinkedList<>();
-                        long fileLength = event.getFileSize();
-                        long blocks = event.getFileSize() / blockSize;
-                        for (long i = 0; i <= blocks; i++) {
+                        long fileSize = event.getFileSize();
+                        int blocks = (int) (event.getFileSize() / blockSize);
+                        for (int i = 0; i <= blocks; i++) {
                             try (RandomAccessFile raf = new RandomAccessFile(file, "r"); FileChannel channel = raf.getChannel()) {
                                 if (i == blocks) {
-                                    int lastBlockSize = (int) (fileLength % blockSize);
+                                    int lastBlockSize = (int) (fileSize % blockSize);
                                     if (0 != lastBlockSize) {
                                         MappedByteBuffer byteBuffer = channel.map(FileChannel.MapMode.READ_ONLY, i * blockSize,
                                                 lastBlockSize);
@@ -95,14 +95,14 @@ public class FileEventHandler implements EventHandler {
                             }
                         }
                         if (!blockChecksumList.isEmpty()) {
-                            remoteMessageHandler.sendBlockchecksumList(null, event.getFilePath(), fileLength, blockSize,
+                            remoteMessageHandler.sendBlockchecksumList(null, event.getFilePath(), fileSize, blockSize,
                                     blockChecksumList);
                         }
                     } else {
-                        long blocks = event.getFileSize() / blockSize;
+                        int blocks = (int) (event.getFileSize() / blockSize);
                         byte[] data = new byte[blockSize];
                         try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
-                            for (long i = 0; i <= blocks; i++) {
+                            for (int i = 0; i <= blocks; i++) {
                                 if (i == blocks) {
                                     int lastBlockSize = (int) (event.getFileSize() % blockSize);
                                     if (0 != lastBlockSize) {

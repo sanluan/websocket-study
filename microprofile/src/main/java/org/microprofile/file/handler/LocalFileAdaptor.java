@@ -70,6 +70,11 @@ public class LocalFileAdaptor {
      */
     public long createFile(String filePath, byte[] data, int start) {
         File file = getFile(filePath);
+        if (file.exists() && file.isDirectory()) {
+            file.delete();
+        } else {
+            file.getParentFile().mkdirs();
+        }
         if (start >= data.length) {
             try {
                 file.createNewFile();
@@ -96,8 +101,13 @@ public class LocalFileAdaptor {
      * @param startIndex
      * @return file length
      */
-    public long modifyFile(String filePath, long fileSize, long blockSize, long blockIndex, byte[] data, int startIndex) {
+    public long modifyFile(String filePath, long fileSize, int blockSize, int blockIndex, byte[] data, int startIndex) {
         File file = getFile(filePath);
+        if (file.exists() && file.isDirectory()) {
+            file.delete();
+        } else {
+            file.getParentFile().mkdirs();
+        }
         try (RandomAccessFile raf = new RandomAccessFile(file, "rw")) {
             if (raf.length() != fileSize) {
                 raf.setLength(fileSize);
@@ -136,7 +146,9 @@ public class LocalFileAdaptor {
      */
     public long deleteDirectory(String filePath) {
         File file = getFile(filePath);
-        FileUtils.deleteQuietly(file);
+        if (file.exists() && file.isDirectory()) {
+            FileUtils.deleteQuietly(file);
+        }
         return file.length();
     }
 
@@ -162,7 +174,7 @@ public class LocalFileAdaptor {
 
     public boolean isRootDir(File file) {
         String absolutePath = file.getAbsolutePath();
-        return basePath.equalsIgnoreCase(absolutePath) || basePath.length() < absolutePath.length();
+        return basePath.equalsIgnoreCase(absolutePath) || basePath.length() > absolutePath.length();
     }
 
     private static class ChecksumFilesVisitor extends SimpleFileVisitor<Path> {

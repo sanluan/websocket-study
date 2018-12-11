@@ -1,7 +1,7 @@
 package org.microprofile.file.message;
 
 public class BlockChecksum {
-    private long index;
+    private int blockIndex;
     private byte[] checksum;
 
     /**
@@ -11,25 +11,25 @@ public class BlockChecksum {
         super();
     }
 
-    public BlockChecksum(long index, byte[] checksum) {
+    public BlockChecksum(int blockIndex, byte[] checksum) {
         super();
-        this.index = index;
+        this.blockIndex = blockIndex;
         this.checksum = checksum;
     }
 
     /**
-     * @return the index
+     * @return the block index
      */
-    public long getIndex() {
-        return index;
+    public int getBlockIndex() {
+        return blockIndex;
     }
 
     /**
-     * @param index
-     *            the index to set
+     * @param blockIndex
+     *            the block index to set
      */
-    public void setIndex(long index) {
-        this.index = index;
+    public void setBlockIndex(int blockIndex) {
+        this.blockIndex = blockIndex;
     }
 
     /**

@@ -99,7 +99,10 @@ public class MessageUtils {
     }
 
     public static ByteBuffer wrapMessage(Message message, boolean masked, boolean first) {
-        int length = message.getPayload().length;
+        int length = 0;
+        if (null != message.getPayload()) {
+            length = message.getPayload().length;
+        }
         byte b = 0;
         if (message.isFin()) {
             b = (byte) (b - 128);

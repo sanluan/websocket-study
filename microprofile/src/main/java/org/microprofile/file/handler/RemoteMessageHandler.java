@@ -41,7 +41,11 @@ public class RemoteMessageHandler implements MessageHandler {
     private static byte HEADER_BLOCK_CHECKSUM = 11;
     private static byte HEADER_FILE_CHECKSUM_RESULT = 12;
     private static byte HEADER_BLOCK_CHECKSUM_RESULT = 13;
-    private static byte FILE_HEADER_LENGTH = 3;
+    private static byte HEADER_LENGTH = 3;
+
+    private static int LENGTH_SHORT = 2;
+    private static int LENGTH_INT = 4;
+    private static int LENGTH_LONG = 8;
     private boolean master = false;
 
     private EventHandler eventHandler;
@@ -72,19 +76,21 @@ public class RemoteMessageHandler implements MessageHandler {
     }
 
     private void handleEvent(byte header, byte[] payload) {
-        short filePathLength = EncodeUtils.bype2Short(Arrays.copyOfRange(payload, 1, FILE_HEADER_LENGTH));
-        int startIndex = FILE_HEADER_LENGTH + filePathLength;
+        short filePathLength = EncodeUtils.bype2Short(Arrays.copyOfRange(payload, 1, HEADER_LENGTH));
+        int startIndex = HEADER_LENGTH + filePathLength;
         if (startIndex <= payload.length) {
-            String filePath = new String(Arrays.copyOfRange(payload, FILE_HEADER_LENGTH, startIndex));
+            String filePath = new String(Arrays.copyOfRange(payload, HEADER_LENGTH, startIndex));
             long cacheFileSize = 0;
             long fileSize = 0;
-            long blockSize = -1;
-            long blockIndex = 0;
+            int blockSize = -1;
+            int blockIndex = 0;
             if (0 == header || 1 == header) {
-                fileSize = EncodeUtils.bype2Long(Arrays.copyOfRange(payload, startIndex, startIndex + 8));
-                blockSize = EncodeUtils.bype2Long(Arrays.copyOfRange(payload, startIndex + 8, startIndex + 16));
-                blockIndex = EncodeUtils.bype2Long(Arrays.copyOfRange(payload, startIndex + 16, startIndex + 24));
-                startIndex += 24;
+                fileSize = EncodeUtils.bype2Long(Arrays.copyOfRange(payload, startIndex, startIndex + LENGTH_LONG));
+                startIndex += LENGTH_LONG;
+                blockSize = EncodeUtils.bype2Int(Arrays.copyOfRange(payload, startIndex, startIndex + LENGTH_INT));
+                startIndex += LENGTH_INT;
+                blockIndex = EncodeUtils.bype2Int(Arrays.copyOfRange(payload, startIndex, startIndex + LENGTH_INT));
+                startIndex += LENGTH_INT;
             }
             EventType eventType = null;
             switch (header) {
@@ -135,7 +141,7 @@ public class RemoteMessageHandler implements MessageHandler {
                             eventHandler.cache(new FileEvent(EventType.DIRECTORY_CREATE, filePath, fileSize));
                         }
                     } else {
-                        if (file.exists()) {
+                        if (file.exists() && !file.isDirectory()) {
                             if (0 < fileChecksum.getFileSize()) {
                                 if (fileChecksum.getFileSize() != file.length()) {
                                     result.add(new FileChecksumResult(filePath, true));
@@ -153,7 +159,7 @@ public class RemoteMessageHandler implements MessageHandler {
                                     raf.setLength(0);
                                 }
                             }
-                        } else if (0 == fileChecksum.getFileSize()) {
+                        } else if (!file.exists() && 0 == fileChecksum.getFileSize()) {
                             file.createNewFile();
                             eventHandler.cache(new FileEvent(EventType.FILE_CREATE, filePath, 0));
                         } else {
@@ -163,6 +169,8 @@ public class RemoteMessageHandler implements MessageHandler {
                 }
                 if (!result.isEmpty()) {
                     sendFileChecksumResultList(session, result);
+                } else {
+                    log.info("all files are synchronized!");
                 }
             }
         } catch (IOException e) {
@@ -171,44 +179,55 @@ public class RemoteMessageHandler implements MessageHandler {
     }
 
     private void handleBlockChecksum(byte[] payload, Session session) {
-        short filePathLength = EncodeUtils.bype2Short(Arrays.copyOfRange(payload, 1, FILE_HEADER_LENGTH));
-        int startIndex = FILE_HEADER_LENGTH + filePathLength;
-        if (startIndex + 16 < payload.length) {
-            String filePath = new String(Arrays.copyOfRange(payload, FILE_HEADER_LENGTH, startIndex));
+        short filePathLength = EncodeUtils.bype2Short(Arrays.copyOfRange(payload, 1, HEADER_LENGTH));
+        int startIndex = HEADER_LENGTH + filePathLength;
+        if (startIndex + LENGTH_LONG + LENGTH_INT < payload.length) {
+            String filePath = new String(Arrays.copyOfRange(payload, HEADER_LENGTH, startIndex));
             File file = localFileAdaptor.getFile(filePath);
             if (file.exists()) {
-                long newFileSize = EncodeUtils.bype2Long(Arrays.copyOfRange(payload, startIndex, startIndex + 8));
-                long blockSize = EncodeUtils.bype2Long(Arrays.copyOfRange(payload, startIndex + 8, startIndex + 16));
-                startIndex += 16;
+                long newFileSize = EncodeUtils.bype2Long(Arrays.copyOfRange(payload, startIndex, startIndex + LENGTH_LONG));
+                startIndex += LENGTH_LONG;
+                int blockSize = EncodeUtils.bype2Int(Arrays.copyOfRange(payload, startIndex, startIndex + LENGTH_INT));
+                startIndex += LENGTH_INT;
                 try {
                     List<BlockChecksum> blockChecksumList = Constants.objectMapper.readValue(payload, startIndex,
                             payload.length - startIndex, new TypeReference<List<BlockChecksum>>() {
                             });
                     if (null != blockChecksumList) {
-                        try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
-                            long fileSize = file.length();
-                            List<Long> result = new LinkedList<>();
+                        List<Integer> result = new LinkedList<>();
+                        if (file.isDirectory()) {
                             for (BlockChecksum blockChecksum : blockChecksumList) {
-                                long currentIndex = blockSize * blockChecksum.getIndex();
-                                if (fileSize <= currentIndex) {
-                                    result.add(blockChecksum.getIndex());
-                                } else {
-                                    int size = (int) (currentIndex + blockSize > fileSize ? fileSize - currentIndex : blockSize);
-                                    MappedByteBuffer byteBuffer = raf.getChannel().map(FileChannel.MapMode.READ_ONLY,
-                                            blockChecksum.getIndex(), size);
-                                    byte[] checksum = EncodeUtils.md2(byteBuffer);
-                                    if (!Arrays.equals(checksum, blockChecksum.getChecksum())) {
-                                        result.add(blockChecksum.getIndex());
-                                    }
-                                }
+                                result.add(blockChecksum.getBlockIndex());
                             }
                             if (!result.isEmpty()) {
                                 sendBlockChecksumResultList(session, filePath, newFileSize, blockSize, result);
                             }
-                        } catch (FileNotFoundException e) {
-                            e.printStackTrace();
-                        } catch (Exception e) {
-                            e.printStackTrace();
+                        } else {
+                            try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
+                                long fileSize = file.length();
+                                for (BlockChecksum blockChecksum : blockChecksumList) {
+                                    long currentIndex = blockSize * blockChecksum.getBlockIndex();
+                                    if (fileSize <= currentIndex) {
+                                        result.add(blockChecksum.getBlockIndex());
+                                    } else {
+                                        int size = (int) (currentIndex + blockSize > fileSize ? fileSize - currentIndex
+                                                : blockSize);
+                                        MappedByteBuffer byteBuffer = raf.getChannel().map(FileChannel.MapMode.READ_ONLY,
+                                                currentIndex, size);
+                                        byte[] checksum = EncodeUtils.md2(byteBuffer);
+                                        if (!Arrays.equals(checksum, blockChecksum.getChecksum())) {
+                                            result.add(blockChecksum.getBlockIndex());
+                                        }
+                                    }
+                                }
+                                if (!result.isEmpty()) {
+                                    sendBlockChecksumResultList(session, filePath, newFileSize, blockSize, result);
+                                }
+                            } catch (FileNotFoundException e) {
+                                e.printStackTrace();
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
                         }
                     }
                 } catch (IOException e) {
@@ -219,23 +238,24 @@ public class RemoteMessageHandler implements MessageHandler {
     }
 
     private void handleBlockChecksumResult(byte[] payload, Session session) {
-        short filePathLength = EncodeUtils.bype2Short(Arrays.copyOfRange(payload, 1, FILE_HEADER_LENGTH));
-        int startIndex = FILE_HEADER_LENGTH + filePathLength;
-        if (startIndex + 16 < payload.length) {
-            String filePath = new String(Arrays.copyOfRange(payload, FILE_HEADER_LENGTH, startIndex));
+        short filePathLength = EncodeUtils.bype2Short(Arrays.copyOfRange(payload, 1, HEADER_LENGTH));
+        int startIndex = HEADER_LENGTH + filePathLength;
+        if (startIndex + LENGTH_LONG + LENGTH_INT < payload.length) {
+            String filePath = new String(Arrays.copyOfRange(payload, HEADER_LENGTH, startIndex));
             File file = localFileAdaptor.getFile(filePath);
-            long oldFileSize = EncodeUtils.bype2Long(Arrays.copyOfRange(payload, startIndex, startIndex + 8));
-            if (file.exists() && oldFileSize == file.length()) {
-                long blockSize = EncodeUtils.bype2Long(Arrays.copyOfRange(payload, startIndex + 8, startIndex + 16));
-                startIndex += 16;
+            long oldFileSize = EncodeUtils.bype2Long(Arrays.copyOfRange(payload, startIndex, startIndex + LENGTH_LONG));
+            if (file.exists() && !file.isDirectory() && oldFileSize == file.length()) {
+                startIndex += LENGTH_LONG;
+                int blockSize = EncodeUtils.bype2Int(Arrays.copyOfRange(payload, startIndex, startIndex + LENGTH_INT));
+                startIndex += LENGTH_INT;
                 try {
-                    List<Long> blockChecksumResultList = Constants.objectMapper.readValue(payload, startIndex,
-                            payload.length - startIndex, new TypeReference<List<Long>>() {
+                    List<Integer> blockChecksumResultList = Constants.objectMapper.readValue(payload, startIndex,
+                            payload.length - startIndex, new TypeReference<List<Integer>>() {
                             });
                     if (null != blockChecksumResultList) {
                         try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
                             long fileSize = file.length();
-                            for (Long blockIndex : blockChecksumResultList) {
+                            for (Integer blockIndex : blockChecksumResultList) {
                                 long currentIndex = blockSize * blockIndex;
                                 int size = (int) (currentIndex + blockSize > fileSize ? fileSize - currentIndex : blockSize);
                                 byte[] data = new byte[size];
@@ -248,6 +268,8 @@ public class RemoteMessageHandler implements MessageHandler {
                         } catch (Exception e) {
                             e.printStackTrace();
                         }
+                    } else {
+                        log.info(filePath + " all blocks are synchronized!");
                     }
                 } catch (IOException e) {
                 }
@@ -264,7 +286,7 @@ public class RemoteMessageHandler implements MessageHandler {
                 for (FileChecksumResult fileChecksumResult : fileChecksumResultList) {
                     String filePath = fileChecksumResult.getFilePath();
                     File file = localFileAdaptor.getFile(filePath);
-                    if (file.exists()) {
+                    if (file.exists() && !file.isDirectory()) {
                         int blockSize = localFileAdaptor.getBlockSize();
                         long fileSize = file.length();
                         if (fileChecksumResult.isExists()) {
@@ -276,8 +298,8 @@ public class RemoteMessageHandler implements MessageHandler {
                                 }
                             } else {
                                 List<BlockChecksum> blockChecksumList = new LinkedList<>();
-                                long blocks = fileSize / blockSize;
-                                for (long i = 0; i <= blocks; i++) {
+                                int blocks = (int) (fileSize / blockSize);
+                                for (int i = 0; i <= blocks; i++) {
                                     try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
                                         FileChannel channel = raf.getChannel();
                                         if (i == blocks) {
@@ -303,10 +325,10 @@ public class RemoteMessageHandler implements MessageHandler {
                                 }
                             }
                         } else {
-                            long blocks = file.length() / blockSize;
+                            int blocks = (int) (file.length() / blockSize);
                             byte[] data = new byte[blockSize];
                             try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
-                                for (long i = 0; i <= blocks; i++) {
+                                for (int i = 0; i <= blocks; i++) {
                                     if (i == blocks) {
                                         int lastBlockSize = (int) (file.length() % blockSize);
                                         if (0 != lastBlockSize) {
@@ -336,15 +358,15 @@ public class RemoteMessageHandler implements MessageHandler {
     public void handle(byte[] payload, Session session) {
         byte header = payload[0];
         log.info("receive " + header);
-        if (0 <= header && HEADER_MAX_EVENT >= header && FILE_HEADER_LENGTH < payload.length) {
+        if (0 <= header && HEADER_MAX_EVENT >= header && HEADER_LENGTH < payload.length) {
             handleEvent(header, payload);
         } else if (HEADER_FILE_CHECKSUM == header && !master) {
             handleFileChecksum(payload, session);
-        } else if (HEADER_BLOCK_CHECKSUM == header && FILE_HEADER_LENGTH < payload.length) {
+        } else if (HEADER_BLOCK_CHECKSUM == header && HEADER_LENGTH < payload.length) {
             handleBlockChecksum(payload, session);
         } else if (HEADER_FILE_CHECKSUM_RESULT == header) {
             handleFileChecksumResult(payload, session);
-        } else if (HEADER_BLOCK_CHECKSUM_RESULT == header && FILE_HEADER_LENGTH < payload.length) {
+        } else if (HEADER_BLOCK_CHECKSUM_RESULT == header && HEADER_LENGTH < payload.length) {
             handleBlockChecksumResult(payload, session);
         }
     }
@@ -352,6 +374,7 @@ public class RemoteMessageHandler implements MessageHandler {
     @Override
     public void onOpen(Session session) throws IOException {
         sessionMap.put(session.getId(), session);
+        log.info(session.getId() + "\t connected!");
         if (master) {
             new Thread() {
                 public void run() {
@@ -368,6 +391,7 @@ public class RemoteMessageHandler implements MessageHandler {
     @Override
     public void onClose(Session session) throws IOException {
         sessionMap.remove(session.getId());
+        log.info(session.getId() + "\t closed!");
     }
 
     private List<String> send(Session session, byte[] data) {
@@ -400,30 +424,32 @@ public class RemoteMessageHandler implements MessageHandler {
 
     public void sendEvent(FileEvent event) {
         byte[] pathByte = getFilePathByte(event.getFilePath());
-        byte[] payload = new byte[FILE_HEADER_LENGTH + pathByte.length];
+        byte[] payload = new byte[HEADER_LENGTH + pathByte.length];
         setHeader(event.getEventType().getCode(), pathByte, payload);
         send(null, payload);
         log.info("sent " + event);
     }
 
-    public void sendBlock(Session session, byte code, String filePath, long fileSize, long blockSize, long blockIndex,
+    public void sendBlock(Session session, byte code, String filePath, long fileSize, int blockSize, int blockIndex,
             byte[] data) {
         byte[] pathByte = filePath.getBytes(Constants.DEFAULT_CHARSET);
-        int headerLength = FILE_HEADER_LENGTH + pathByte.length;
-        byte[] payload = new byte[headerLength + 24 + data.length];
+        int headerLength = HEADER_LENGTH + pathByte.length;
+        byte[] payload = new byte[headerLength + LENGTH_LONG + LENGTH_INT + LENGTH_INT + data.length];
 
         setHeader(code, pathByte, payload);
 
-        System.arraycopy(EncodeUtils.long2Byte(fileSize), 0, payload, headerLength, 8);
-        System.arraycopy(EncodeUtils.long2Byte(blockSize), 0, payload, headerLength + 8, 8);
-        System.arraycopy(EncodeUtils.long2Byte(blockIndex), 0, payload, headerLength + 16, 8);
-
-        System.arraycopy(data, 0, payload, headerLength + 24, data.length);
+        System.arraycopy(EncodeUtils.long2Byte(fileSize), 0, payload, headerLength, LENGTH_LONG);
+        headerLength += LENGTH_LONG;
+        System.arraycopy(EncodeUtils.int2Byte(blockSize), 0, payload, headerLength, LENGTH_INT);
+        headerLength += LENGTH_INT;
+        System.arraycopy(EncodeUtils.int2Byte(blockIndex), 0, payload, headerLength, LENGTH_INT);
+        headerLength += LENGTH_INT;
+        System.arraycopy(data, 0, payload, headerLength, data.length);
         send(session, payload);
         log.info("sent file blocks of:" + filePath + "\t" + data.length);
     }
 
-    public void sendBlockchecksumList(Session session, String filePath, long fileSize, long blockSize,
+    public void sendBlockchecksumList(Session session, String filePath, long fileSize, int blockSize,
             List<BlockChecksum> blockList) {
         try {
             sendBlockList(session, HEADER_BLOCK_CHECKSUM, filePath, fileSize, blockSize, blockList);
@@ -433,8 +459,8 @@ public class RemoteMessageHandler implements MessageHandler {
         }
     }
 
-    private void sendBlockChecksumResultList(Session session, String filePath, long fileSize, long blockSize,
-            List<Long> blockList) {
+    private void sendBlockChecksumResultList(Session session, String filePath, long fileSize, int blockSize,
+            List<Integer> blockList) {
         try {
             sendBlockList(session, HEADER_BLOCK_CHECKSUM_RESULT, filePath, fileSize, blockSize, blockList);
             log.info("sent file blocks checksum result of:" + filePath + "\t" + blockList.size());
@@ -443,18 +469,19 @@ public class RemoteMessageHandler implements MessageHandler {
         }
     }
 
-    private void sendBlockList(Session session, byte code, String filePath, long fileSize, long blockSize, List<?> blockList)
+    private void sendBlockList(Session session, byte code, String filePath, long fileSize, int blockSize, List<?> blockList)
             throws JsonProcessingException {
         byte[] pathByte = getFilePathByte(filePath);
-        int headerLength = FILE_HEADER_LENGTH + pathByte.length;
+        int headerLength = HEADER_LENGTH + pathByte.length;
         byte[] data = Constants.objectMapper.writeValueAsBytes(blockList);
-        byte[] payload = new byte[headerLength + 16 + data.length];
+        byte[] payload = new byte[headerLength + LENGTH_LONG + LENGTH_INT + data.length];
 
         setHeader(code, pathByte, payload);
-
-        System.arraycopy(EncodeUtils.long2Byte(blockSize), 0, payload, headerLength, 8);
-        System.arraycopy(EncodeUtils.long2Byte(fileSize), 0, payload, headerLength + 8, 8);
-        System.arraycopy(data, 0, payload, headerLength + 16, data.length);
+        System.arraycopy(EncodeUtils.long2Byte(fileSize), 0, payload, headerLength, LENGTH_LONG);
+        headerLength += LENGTH_LONG;
+        System.arraycopy(EncodeUtils.int2Byte(blockSize), 0, payload, headerLength, LENGTH_INT);
+        headerLength += LENGTH_INT;
+        System.arraycopy(data, 0, payload, headerLength, data.length);
         send(session, payload);
     }
 
@@ -508,7 +535,7 @@ public class RemoteMessageHandler implements MessageHandler {
 
     private void setHeader(byte code, byte[] pathByte, byte[] payload) {
         payload[0] = code;
-        System.arraycopy(EncodeUtils.short2Byte((short) pathByte.length), 0, payload, 1, 2);
-        System.arraycopy(pathByte, 0, payload, FILE_HEADER_LENGTH, pathByte.length);
+        System.arraycopy(EncodeUtils.short2Byte((short) pathByte.length), 0, payload, 1, LENGTH_SHORT);
+        System.arraycopy(pathByte, 0, payload, HEADER_LENGTH, pathByte.length);
     }
 }
