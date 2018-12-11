@@ -5,6 +5,8 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.microprofile.file.constant.Constants;
 import org.microprofile.nio.handler.ProtocolHandler;
 import org.microprofile.websocket.utils.HttpProtocolUtils;
@@ -15,6 +17,7 @@ import org.microprofile.websocket.utils.MessageUtils;
  *
  */
 public class WebSocketProtocolHandler implements ProtocolHandler {
+    protected final Log log = LogFactory.getLog(getClass());
     private MessageHandler handler;
     private boolean server = true;
 
@@ -48,6 +51,7 @@ public class WebSocketProtocolHandler implements ProtocolHandler {
                 byteBuffer.flip();
                 Message message = MessageUtils.processMessage(byteBuffer);
                 while (null != message) {
+                    log.info(message.isFin() + "\t" + message.getOpCode());
                     if (MessageUtils.isControl(message.getOpCode())) {
                         if (Message.OPCODE_CLOSE == message.getOpCode()) {
                             close(key);
@@ -101,21 +105,19 @@ public class WebSocketProtocolHandler implements ProtocolHandler {
                 frame.setInitialized(true);
                 handler.onOpen(frame.getSession());
             }
-        } catch (
-
-        IOException e) {
+        } catch (IOException e) {
+            e.printStackTrace();
             if (null != frame && frame.isInitialized()) {
                 handler.onClose(frame.getSession());
             }
-            throw new IOException(e);
         }
     }
 
     @Override
     public void close(SelectionKey key) throws IOException {
-        Session session = (Session) key.attachment();
-        if (null != session) {
-            handler.onClose(session);
+        WebSocketFrame frame = (WebSocketFrame) key.attachment();
+        if (null != frame && frame.isInitialized()) {
+            handler.onClose(frame.getSession());
         }
     }
 }

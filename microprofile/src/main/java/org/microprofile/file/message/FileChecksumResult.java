@@ -5,9 +5,15 @@ public class FileChecksumResult {
     private boolean exists;
 
     /**
+     * 
+     */
+    public FileChecksumResult() {
+        super();
+    }
+
+    /**
      * @param filePath
-     * @param directory
-     * @param fileSize
+     * @param exists
      */
     public FileChecksumResult(String filePath, boolean exists) {
         super();

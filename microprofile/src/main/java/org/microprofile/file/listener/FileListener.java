@@ -38,6 +38,7 @@ public class FileListener implements FileAlterationListener {
 
     /**
      * @param listenPath
+     * @param blockSize 
      * @param fileFilter
      */
     public FileListener(String listenPath, int blockSize, final FileFilter fileFilter) {
@@ -46,6 +47,7 @@ public class FileListener implements FileAlterationListener {
 
     /**
      * @param listenPath
+     * @param blockSize 
      * @param fileFilter
      * @param caseSensitivity
      */

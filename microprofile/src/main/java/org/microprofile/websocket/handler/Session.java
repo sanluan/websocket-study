@@ -5,6 +5,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.UUID;
 
+import org.microprofile.file.constant.Constants;
 import org.microprofile.websocket.utils.MessageUtils;
 
 public class Session {
@@ -29,7 +30,7 @@ public class Session {
     }
 
     public void sendString(String data) throws IOException {
-        send(new Message(true, 0, Message.OPCODE_STRING, data.getBytes()));
+        send(new Message(true, 0, Message.OPCODE_STRING, data.getBytes(Constants.DEFAULT_CHARSET)));
     }
 
     public void sendByte(byte[] data) throws IOException {

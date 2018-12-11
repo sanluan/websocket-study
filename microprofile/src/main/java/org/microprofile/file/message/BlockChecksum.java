@@ -4,6 +4,13 @@ public class BlockChecksum {
     private long index;
     private byte[] checksum;
 
+    /**
+     * 
+     */
+    public BlockChecksum() {
+        super();
+    }
+
     public BlockChecksum(long index, byte[] checksum) {
         super();
         this.index = index;

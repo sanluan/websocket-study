@@ -7,6 +7,13 @@ public class FileChecksum {
     private byte[] checksum;
 
     /**
+     * 
+     */
+    public FileChecksum() {
+        super();
+    }
+
+    /**
      * @param filePath
      * @param directory
      * @param fileSize

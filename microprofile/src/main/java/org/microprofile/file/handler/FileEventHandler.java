@@ -40,7 +40,6 @@ public class FileEventHandler implements EventHandler {
 
     /**
      * @param cacheSize
-     * @param blockSize
      * @param localFileAdaptor
      */
     public FileEventHandler(LocalFileAdaptor localFileAdaptor, int cacheSize) {
@@ -61,11 +60,12 @@ public class FileEventHandler implements EventHandler {
             if (HEADER_FILE_CREATE == code || HEADER_FILE_MODIFY == code) {
                 File file = localFileAdaptor.getFile(event.getFilePath());
                 int blockSize = localFileAdaptor.getBlockSize();
-                if (blockSize < event.getFileSize()) {
+                if (blockSize > event.getFileSize()) {
                     try {
-                        remoteMessageHandler.sendFileBlock(null, code, event.getFilePath(), 0, -1,
+                        remoteMessageHandler.sendBlock(null, code, event.getFilePath(), event.getFileSize(), -1, 0,
                                 FileUtils.readFileToByteArray(file));
                     } catch (IOException e) {
+                        e.printStackTrace();
                     }
                 } else {
                     if (HEADER_FILE_MODIFY == code) {
@@ -91,6 +91,7 @@ public class FileEventHandler implements EventHandler {
                                 remoteMessageHandler.sendEvent(event);
                                 blockChecksumList.clear();
                             } catch (IOException e) {
+                                e.printStackTrace();
                             }
                         }
                         if (!blockChecksumList.isEmpty()) {
@@ -107,21 +108,24 @@ public class FileEventHandler implements EventHandler {
                                     if (0 != lastBlockSize) {
                                         byte[] lastBlock = new byte[lastBlockSize];
                                         raf.read(lastBlock);
-                                        remoteMessageHandler.sendFileBlock(null, code, event.getFilePath(), i, blockSize,
-                                                lastBlock);
+                                        remoteMessageHandler.sendBlock(null, code, event.getFilePath(), event.getFileSize(),
+                                                blockSize, i, lastBlock);
                                     } else if (0 == blocks) {
-                                        remoteMessageHandler.sendFileBlock(null, code, event.getFilePath(), 0, -1, EMPTY_BYTE);
+                                        remoteMessageHandler.sendBlock(null, code, event.getFilePath(), event.getFileSize(), -1,
+                                                0, EMPTY_BYTE);
                                     }
                                 } else {
                                     raf.seek(i * blockSize);
                                     raf.read(data);
-                                    remoteMessageHandler.sendFileBlock(null, code, event.getFilePath(), i, blockSize, data);
+                                    remoteMessageHandler.sendBlock(null, code, event.getFilePath(), event.getFileSize(),
+                                            blockSize, i, data);
                                 }
                             }
                         } catch (FileNotFoundException e) {
                             event.setEventType(EventType.FILE_DELETE);
                             remoteMessageHandler.sendEvent(event);
                         } catch (IOException e) {
+                            e.printStackTrace();
                         }
                     }
                 }
@@ -132,9 +136,11 @@ public class FileEventHandler implements EventHandler {
     }
 
     /**
+     * @param master
      * @return the remoteMessageHandler
      */
-    public RemoteMessageHandler getRemoteMessageHandler() {
+    public RemoteMessageHandler getRemoteMessageHandler(boolean master) {
+        remoteMessageHandler.setMaster(master);
         return remoteMessageHandler;
     }
 

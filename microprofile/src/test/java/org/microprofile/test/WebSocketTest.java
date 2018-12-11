@@ -62,7 +62,6 @@ class WebSocketTestHandler implements MessageHandler {
 
     @Override
     public void onOpen(Session session) throws IOException {
-        // TODO Auto-generated method stub
         this.sessions.add(session);
     }
 

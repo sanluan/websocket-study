@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -39,8 +40,26 @@ public class LocalFileAdaptor {
         try {
             Files.walkFileTree(Paths.get(basePath), new ChecksumFilesVisitor(result, this));
         } catch (IOException e) {
+            e.printStackTrace();
         }
         return result;
+    }
+
+    /**
+     * @param file
+     * @param checksum
+     * @return
+     * @throws FileNotFoundException
+     * @throws IOException
+     */
+    public boolean verifyFile(File file, byte[] checksum) throws FileNotFoundException, IOException {
+        if (null == checksum) {
+            return false;
+        }
+        try (FileInputStream fin = new FileInputStream(file)) {
+            MappedByteBuffer byteBuffer = fin.getChannel().map(FileChannel.MapMode.READ_ONLY, 0, file.length());
+            return Arrays.equals(EncodeUtils.md2(byteBuffer), checksum);
+        }
     }
 
     /**
@@ -51,37 +70,42 @@ public class LocalFileAdaptor {
      */
     public long createFile(String filePath, byte[] data, int start) {
         File file = getFile(filePath);
-        try {
-            if (start >= data.length) {
+        if (start >= data.length) {
+            try {
                 file.createNewFile();
-            } else {
-                FileUtils.writeByteArrayToFile(file, data, start, data.length);
+            } catch (IOException e) {
+                e.printStackTrace();
             }
-        } catch (IOException e) {
+        } else {
+            try (RandomAccessFile raf = new RandomAccessFile(file, "rw")) {
+                raf.setLength(data.length - start);
+                raf.write(data, start, data.length - start);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
         return file.length();
     }
 
     /**
      * @param filePath
+     * @param fileSize
      * @param blockIndex
      * @param blockSize
      * @param data
      * @param startIndex
      * @return file length
      */
-    public long modifyFile(String filePath, long blockIndex, long blockSize, byte[] data, int startIndex) {
+    public long modifyFile(String filePath, long fileSize, long blockSize, long blockIndex, byte[] data, int startIndex) {
         File file = getFile(filePath);
-        try {
-            if (0 < blockSize) {
-                FileUtils.writeByteArrayToFile(file, data);
-            } else {
-                try (RandomAccessFile raf = new RandomAccessFile(file, "rw")) {
-                    raf.seek(blockIndex * blockSize);
-                    raf.write(data, startIndex, data.length - startIndex);
-                }
+        try (RandomAccessFile raf = new RandomAccessFile(file, "rw")) {
+            if (raf.length() != fileSize) {
+                raf.setLength(fileSize);
             }
+            raf.seek(blockIndex * blockSize);
+            raf.write(data, startIndex, data.length - startIndex);
         } catch (IOException e) {
+            e.printStackTrace();
         }
         return file.length();
     }
@@ -123,7 +147,7 @@ public class LocalFileAdaptor {
     public File getFile(String filePath) {
         return new File(basePath, filePath);
     }
-    
+
     /**
      * @return the blockSize
      */
@@ -134,6 +158,11 @@ public class LocalFileAdaptor {
     public String getRelativeFilePath(File file) {
         String absolutePath = file.getAbsolutePath();
         return absolutePath.substring(basePath.length() + 1, absolutePath.length());
+    }
+
+    public boolean isRootDir(File file) {
+        String absolutePath = file.getAbsolutePath();
+        return basePath.equalsIgnoreCase(absolutePath) || basePath.length() < absolutePath.length();
     }
 
     private static class ChecksumFilesVisitor extends SimpleFileVisitor<Path> {
@@ -148,16 +177,18 @@ public class LocalFileAdaptor {
 
         @Override
         public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) {
-            FileChecksum fileChecksum = new FileChecksum(localFileAdaptor.getRelativeFilePath(dir.toFile()), false, attrs.size());
-            result.add(fileChecksum);
+            File file = dir.toFile();
+            if (!localFileAdaptor.isRootDir(file)) {
+                FileChecksum fileChecksum = new FileChecksum(localFileAdaptor.getRelativeFilePath(file), true, attrs.size());
+                result.add(fileChecksum);
+            }
             return FileVisitResult.CONTINUE;
         }
 
         @Override
         public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
             File f = file.toFile();
-            FileChecksum fileChecksum = new FileChecksum(localFileAdaptor.getRelativeFilePath(f), attrs.isDirectory(),
-                    attrs.size());
+            FileChecksum fileChecksum = new FileChecksum(localFileAdaptor.getRelativeFilePath(f), false, attrs.size());
             if (0 < attrs.size()) {
                 try (FileInputStream fin = new FileInputStream(f)) {
                     MappedByteBuffer byteBuffer = fin.getChannel().map(FileChannel.MapMode.READ_ONLY, 0, attrs.size());
@@ -167,7 +198,9 @@ public class LocalFileAdaptor {
                         result.add(fileChecksum);
                     }
                 } catch (FileNotFoundException e) {
+                    e.printStackTrace();
                 } catch (Exception e) {
+                    e.printStackTrace();
                 }
             } else {
                 result.add(fileChecksum);

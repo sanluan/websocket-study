@@ -40,8 +40,8 @@ public class MessageUtils {
             byte b2 = byteBuffer.get();
             boolean hasMask = (b2 & 0x80) > 0;
             int payloadLen = (b2 & 0x7F);
+            byte[] payloadLenngthByte = null;
             if (126 <= payloadLen) {
-                byte[] payloadLenngthByte;
                 if (126 == payloadLen) {
                     payloadLenngthByte = new byte[2];
                 } else {
@@ -69,6 +69,11 @@ public class MessageUtils {
                     }
                 } else {
                     return new Message(fin, rsv, opCode, array);
+                }
+            } else {
+                byteBuffer.position(byteBuffer.position() - 2);
+                if (null != payloadLenngthByte) {
+                    byteBuffer.position(byteBuffer.position() - payloadLenngthByte.length);
                 }
             }
         }
