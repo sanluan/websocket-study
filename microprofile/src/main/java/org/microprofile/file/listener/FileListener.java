@@ -21,7 +21,7 @@ import org.microprofile.file.handler.LocalFileAdaptor;
 public class FileListener implements FileAlterationListener {
     /**
      */
-    public final static int DEFULT_BLOCK_SIZE = 1024 * 1024 * 10;
+    public final static int DEFULT_BLOCK_SIZE = 1024 * 1024 * 1;
 
     private String basePath;
     private List<EventHandler> eventHandlers;

@@ -34,15 +34,15 @@ public abstract class SocketProcesser implements Closeable {
                     client.register(key.selector(), SelectionKey.OP_READ);
                 } else if (key.isReadable()) {
                     SocketChannel client = (SocketChannel) key.channel();
-                    ByteBuffer byteBuffer = ByteBuffer.allocate(1024);
+                    ByteBuffer byteBuffer = ByteBuffer.allocate(1024 * 10);
                     int n = -1;
                     try {
                         n = client.read(byteBuffer);
                     } catch (Exception ex) {
                     }
                     if (n == -1) {
-                        key.cancel();
                         client.close();
+                        key.cancel();
                     } else if (0 < n) {
                         pool.execute(new ThreadHandler(protocolHandler, byteBuffer, key));
                     }

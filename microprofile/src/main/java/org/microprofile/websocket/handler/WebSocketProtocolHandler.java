@@ -58,7 +58,12 @@ public class WebSocketProtocolHandler implements ProtocolHandler {
                         } else if (Message.OPCODE_PING == message.getOpCode()) {
                             Message pongMessage = new Message(message.isFin(), message.getRsv(), Message.OPCODE_PONG,
                                     message.getPayload());
-                            socketChannel.write(MessageUtils.wrapMessage(pongMessage, false, true));
+                            if (socketChannel.isOpen()) {
+                                socketChannel.write(MessageUtils.wrapMessage(pongMessage, false, true));
+                            } else {
+                                close(key);
+                                break;
+                            }
                         } else {
                             close(key);
                             break;
@@ -114,7 +119,8 @@ public class WebSocketProtocolHandler implements ProtocolHandler {
         WebSocketFrame frame = (WebSocketFrame) key.attachment();
         if (null != frame && frame.isInitialized()) {
             handler.onClose(frame.getSession());
-            frame.getSession().close();
         }
+        key.channel().close();
+        key.cancel();
     }
 }

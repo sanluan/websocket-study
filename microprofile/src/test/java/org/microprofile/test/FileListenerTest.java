@@ -24,7 +24,7 @@ public class FileListenerTest {
             listener.addEventHandler(fileEventHandler);
             listener.start();
             ws.asyncListen();
-            Thread.sleep(1000 * 10);
+            Thread.sleep(1000 * 1000);
             wss.close();
             ws.close();
             listener.stop();
