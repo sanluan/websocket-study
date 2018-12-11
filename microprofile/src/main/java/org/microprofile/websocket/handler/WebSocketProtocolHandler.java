@@ -51,7 +51,6 @@ public class WebSocketProtocolHandler implements ProtocolHandler {
                 byteBuffer.flip();
                 Message message = MessageUtils.processMessage(byteBuffer);
                 while (null != message) {
-                    log.info(message.isFin() + "\t" + message.getOpCode());
                     if (MessageUtils.isControl(message.getOpCode())) {
                         if (Message.OPCODE_CLOSE == message.getOpCode()) {
                             close(key);
