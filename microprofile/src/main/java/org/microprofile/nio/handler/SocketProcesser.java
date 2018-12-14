@@ -29,9 +29,10 @@ public abstract class SocketProcesser implements Closeable {
                 keyIterator.remove();
                 if (key.isAcceptable()) {
                     ServerSocketChannel server = (ServerSocketChannel) key.channel();
-                    SocketChannel client = server.accept();
-                    client.configureBlocking(false);
-                    client.register(key.selector(), SelectionKey.OP_READ);
+                    SocketChannel socketChannel = server.accept();
+                    socketChannel.configureBlocking(false);
+                    ChannelContext channelContext = new ChannelContext(key, socketChannel);
+                    socketChannel.register(key.selector(), SelectionKey.OP_READ, channelContext);
                 } else if (key.isReadable()) {
                     SocketChannel client = (SocketChannel) key.channel();
                     ByteBuffer byteBuffer = ByteBuffer.allocate(1024);
@@ -40,12 +41,7 @@ public abstract class SocketProcesser implements Closeable {
                         n = client.read(byteBuffer);
                     } catch (Exception ex) {
                     }
-                    if (n == -1) {
-                        key.cancel();
-                        client.close();
-                    } else if (0 < n) {
-                        pool.execute(new ThreadHandler(protocolHandler, byteBuffer, key));
-                    }
+                    pool.execute(new ThreadHandler(protocolHandler, n == -1 ? null : byteBuffer, key));
                 }
             }
         }
@@ -53,11 +49,10 @@ public abstract class SocketProcesser implements Closeable {
 
     @Override
     public void close() throws IOException {
-        if (selector.isOpen()) {
             selector.close();
-        }
-        if (null != pool) {
-            pool.shutdown();
-        }
+        }if(null!=pool)
+
+    {
+        pool.shutdown();
     }
-}
+}}

@@ -2,28 +2,27 @@ package org.microprofile.nio.handler;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.SelectionKey;
 
 public class ThreadHandler implements Runnable {
     private ProtocolHandler protocolHandler;
-    private SelectionKey key;
+    private ChannelContext channel;
     private ByteBuffer byteBuffer;
 
-    public ThreadHandler(ProtocolHandler protocolHandler, ByteBuffer byteBuffer, SelectionKey key) {
+    public ThreadHandler(ProtocolHandler protocolHandler, ByteBuffer byteBuffer, ChannelContext channel) {
         this.protocolHandler = protocolHandler;
-        this.key = key;
+        this.channel = channel;
         this.byteBuffer = byteBuffer;
     }
 
     @Override
     public void run() {
         try {
-            protocolHandler.read(key, byteBuffer);
+            protocolHandler.read(channel.getKey(), byteBuffer);
         } catch (IOException e) {
-            if (key.channel().isOpen()) {
+            if (channel.getKey().channel().isOpen()) {
                 try {
-                    key.channel().close();
-                    key.cancel();
+                    channel.getSocketChannel().close();
+                    channel.getKey().cancel();
                 } catch (IOException e1) {
                 }
             }
