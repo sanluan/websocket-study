@@ -41,7 +41,8 @@ public abstract class SocketProcesser implements Closeable {
                         n = client.read(byteBuffer);
                     } catch (Exception ex) {
                     }
-                    pool.execute(new ThreadHandler(protocolHandler, n == -1 ? null : byteBuffer, key));
+                    pool.execute(
+                            new ThreadHandler(protocolHandler, n == -1 ? null : byteBuffer, (ChannelContext) key.attachment()));
                 }
             }
         }
@@ -49,10 +50,9 @@ public abstract class SocketProcesser implements Closeable {
 
     @Override
     public void close() throws IOException {
-            selector.close();
-        }if(null!=pool)
-
-    {
-        pool.shutdown();
+        selector.close();
+        if (null != pool) {
+            pool.shutdown();
+        }
     }
-}}
+}
