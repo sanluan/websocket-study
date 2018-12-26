@@ -2,12 +2,12 @@ package org.microprofile.test;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.SelectionKey;
 import java.util.Scanner;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.microprofile.nio.SocketClient;
+import org.microprofile.nio.handler.ChannelContext;
 import org.microprofile.nio.handler.ProtocolHandler;
 
 public class NioClientTest {
@@ -46,11 +46,11 @@ class NioClientThread extends Thread {
     }
 }
 
-class NioClientProtocolHandler implements ProtocolHandler {
+class NioClientProtocolHandler implements ProtocolHandler<Object> {
     protected final Log log = LogFactory.getLog(getClass());
 
     @Override
-    public void read(SelectionKey key, ByteBuffer byteBuffer) throws IOException {
+    public void read(ChannelContext<Object> channelContext, ByteBuffer byteBuffer) {
         byteBuffer.flip();
         byte[] dst = new byte[byteBuffer.limit()];
         byteBuffer.get(dst);
@@ -59,7 +59,7 @@ class NioClientProtocolHandler implements ProtocolHandler {
     }
 
     @Override
-    public void close(SelectionKey key) throws IOException {
+    public void close(ChannelContext<Object> channelContext) {
 
     }
 }

@@ -13,12 +13,15 @@ import java.util.concurrent.ExecutorService;
 public abstract class SocketProcesser implements Closeable {
     protected Selector selector;
     protected ExecutorService pool;
-    protected ProtocolHandler protocolHandler;
+    protected ProtocolHandler<?> protocolHandler;
+    protected SocketChannel socketChannel;
 
-    public SocketProcesser(ExecutorService pool, ProtocolHandler protocolHandler) throws IOException {
+    public SocketProcesser(ExecutorService pool, ProtocolHandler<?> protocolHandler, SocketChannel socketChannel)
+            throws IOException {
         this.selector = Selector.open();
         this.pool = pool;
         this.protocolHandler = protocolHandler;
+        this.socketChannel = socketChannel;
     }
 
     public void polling() throws IOException {
@@ -27,22 +30,34 @@ public abstract class SocketProcesser implements Closeable {
             while (keyIterator.hasNext()) {
                 SelectionKey key = keyIterator.next();
                 keyIterator.remove();
+                ChannelContext<?> channelContext;
                 if (key.isAcceptable()) {
                     ServerSocketChannel server = (ServerSocketChannel) key.channel();
                     SocketChannel socketChannel = server.accept();
                     socketChannel.configureBlocking(false);
-                    ChannelContext channelContext = new ChannelContext(key, socketChannel);
+                    channelContext = new ChannelContext<>(key, protocolHandler, socketChannel);
                     socketChannel.register(key.selector(), SelectionKey.OP_READ, channelContext);
                 } else if (key.isReadable()) {
                     SocketChannel client = (SocketChannel) key.channel();
-                    ByteBuffer byteBuffer = ByteBuffer.allocate(1024);
+                    ByteBuffer byteBuffer = ByteBuffer.allocateDirect(1024);
+                    channelContext = (ChannelContext<?>) key.attachment();
+                    if (null == channelContext) {
+                        channelContext = new ChannelContext<>(key, protocolHandler, socketChannel);
+                    }
                     int n = -1;
                     try {
                         n = client.read(byteBuffer);
                     } catch (Exception ex) {
                     }
-                    pool.execute(
-                            new ThreadHandler(protocolHandler, n == -1 ? null : byteBuffer, (ChannelContext) key.attachment()));
+                    if (n == -1) {
+                        channelContext.close();
+                    } else if (0 < n) {
+                        ThreadHandler<?> threadHandler = channelContext.getThreadHandler();
+                        threadHandler.addByteBuffer(byteBuffer);
+                        if (!threadHandler.isRunning()) {
+                            pool.execute(threadHandler);
+                        }
+                    }
                 }
             }
         }

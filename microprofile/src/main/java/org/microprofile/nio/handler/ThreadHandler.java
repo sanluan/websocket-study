@@ -1,31 +1,62 @@
 package org.microprofile.nio.handler;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
-public class ThreadHandler implements Runnable {
-    private ProtocolHandler protocolHandler;
-    private ChannelContext channel;
-    private ByteBuffer byteBuffer;
+public class ThreadHandler<T> implements Runnable, Closeable {
+    private ChannelContext<T> channelContext;
+    private ConcurrentLinkedQueue<ByteBuffer> byteBufferQueue = new ConcurrentLinkedQueue<>();
+    private Lock lock = new ReentrantLock();
+    private boolean running;
+    private boolean closed;
 
-    public ThreadHandler(ProtocolHandler protocolHandler, ByteBuffer byteBuffer, ChannelContext channel) {
-        this.protocolHandler = protocolHandler;
-        this.channel = channel;
-        this.byteBuffer = byteBuffer;
+    public ThreadHandler(ChannelContext<T> channelContext) {
+        this.channelContext = channelContext;
+    }
+
+    public void addByteBuffer(ByteBuffer byteBuffer) {
+        byteBufferQueue.add(byteBuffer);
     }
 
     @Override
     public void run() {
-        try {
-            protocolHandler.read(channel.getKey(), byteBuffer);
-        } catch (IOException e) {
-            if (channel.getKey().channel().isOpen()) {
+        lock.lock();
+        running = true;
+        lock.unlock();
+        ByteBuffer byteBuffer = byteBufferQueue.poll();
+        while (null != byteBuffer && !closed) {
+            ProtocolHandler<T> protocolHandler = channelContext.getProtocolHandler();
+            try {
+                protocolHandler.read(channelContext, byteBuffer);
+            } catch (IOException e) {
                 try {
-                    channel.getSocketChannel().close();
-                    channel.getKey().cancel();
+                    channelContext.close();
                 } catch (IOException e1) {
                 }
             }
+            byteBuffer = byteBufferQueue.poll();
         }
+        lock.lock();
+        running = false;
+        lock.unlock();
+    }
+
+    /**
+     * @return the running
+     */
+    public boolean isRunning() {
+        lock.lock();
+        boolean result = running;
+        lock.unlock();
+        return result;
+    }
+
+    @Override
+    public void close() throws IOException {
+        closed = true;
     }
 }

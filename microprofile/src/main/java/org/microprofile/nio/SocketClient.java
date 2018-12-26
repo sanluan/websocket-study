@@ -14,15 +14,14 @@ import org.microprofile.nio.handler.ProtocolHandler;
 import org.microprofile.nio.handler.SocketProcesser;
 
 public class SocketClient extends SocketProcesser implements Closeable {
-    private SocketChannel socketChannel;
 
-    public SocketClient(String host, int port, ExecutorService pool, ProtocolHandler protocolHandler) throws IOException {
+    public SocketClient(String host, int port, ExecutorService pool, ProtocolHandler<?> protocolHandler) throws IOException {
         this(new InetSocketAddress(host, port), pool, protocolHandler);
     }
 
-    public SocketClient(SocketAddress socketAddress, ExecutorService pool, ProtocolHandler protocolHandler) throws IOException {
-        super(pool, protocolHandler);
-        this.socketChannel = SocketChannel.open(socketAddress);
+    public SocketClient(SocketAddress socketAddress, ExecutorService pool, ProtocolHandler<?> protocolHandler)
+            throws IOException {
+        super(pool, protocolHandler, SocketChannel.open(socketAddress));
         socketChannel.configureBlocking(false);
         socketChannel.register(selector, SelectionKey.OP_READ);
     }
@@ -37,7 +36,10 @@ public class SocketClient extends SocketProcesser implements Closeable {
     }
 
     public void asyncListen() throws IOException {
-        new Thread() {
+        StringBuffer sb = new StringBuffer("Thread-client ");
+        sb.append(socketChannel.getLocalAddress()).append(" to server ").append(socketChannel.getRemoteAddress())
+                .append(" listener");
+        new Thread(sb.toString()) {
             public void run() {
                 try {
                     listen();

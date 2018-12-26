@@ -5,9 +5,9 @@ import java.io.IOException;
 import java.util.concurrent.Executors;
 
 import org.microprofile.nio.SocketClient;
-import org.microprofile.websocket.handler.WebSocketProtocolHandler;
 import org.microprofile.websocket.handler.Message;
 import org.microprofile.websocket.handler.MessageHandler;
+import org.microprofile.websocket.handler.WebSocketProtocolHandler;
 import org.microprofile.websocket.utils.HttpProtocolUtils;
 import org.microprofile.websocket.utils.MessageUtils;
 

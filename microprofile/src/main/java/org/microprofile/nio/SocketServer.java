@@ -4,6 +4,7 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
+import java.net.SocketAddress;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.ServerSocketChannel;
 import java.util.concurrent.ExecutorService;
@@ -18,23 +19,26 @@ import org.microprofile.nio.handler.SocketProcesser;
  */
 public class SocketServer extends SocketProcesser implements Closeable {
     private ServerSocketChannel serverSocketChannel;
-    private String host;
-    private int port;
+    private SocketAddress socketAddress;
 
-    public SocketServer(int port, ExecutorService pool, ProtocolHandler protocolHandler) throws IOException {
+    public SocketServer(int port, ExecutorService pool, ProtocolHandler<?> protocolHandler) throws IOException {
         this(null, port, pool, protocolHandler);
     }
 
-    public SocketServer(String host, int port, ExecutorService pool, ProtocolHandler protocolHandler) throws IOException {
-        super(pool, protocolHandler);
-        this.host = host;
-        this.port = port;
+    public SocketServer(String host, int port, ExecutorService pool, ProtocolHandler<?> protocolHandler) throws IOException {
+        this(null == host ? new InetSocketAddress(port) : new InetSocketAddress(host, port), pool, protocolHandler);
+    }
+
+    public SocketServer(SocketAddress socketAddress, ExecutorService pool, ProtocolHandler<?> protocolHandler)
+            throws IOException {
+        super(pool, protocolHandler, null);
+        this.socketAddress = socketAddress;
         this.serverSocketChannel = ServerSocketChannel.open();
     }
 
     public void listen() throws IOException {
         ServerSocket serverSocket = serverSocketChannel.socket();
-        serverSocket.bind(null == host ? new InetSocketAddress(port) : new InetSocketAddress(host, port));
+        serverSocket.bind(socketAddress);
         serverSocketChannel.configureBlocking(false);
         if (null == pool) {
             pool = Executors.newFixedThreadPool(1);
@@ -46,7 +50,9 @@ public class SocketServer extends SocketProcesser implements Closeable {
     }
 
     public void asyncListen() throws IOException {
-        new Thread() {
+        StringBuffer sb = new StringBuffer("Thread-server ");
+        sb.append(socketAddress).append(" listener");
+        new Thread(sb.toString()) {
             public void run() {
                 try {
                     listen();
@@ -64,16 +70,12 @@ public class SocketServer extends SocketProcesser implements Closeable {
         super.close();
     }
 
-    public ProtocolHandler getProtocolHandler() {
+    public ProtocolHandler<?> getProtocolHandler() {
         return protocolHandler;
     }
 
-    public String getHost() {
-        return host;
-    }
-
-    public int getPort() {
-        return port;
+    public SocketAddress getSocketAddress() {
+        return socketAddress;
     }
 
 }

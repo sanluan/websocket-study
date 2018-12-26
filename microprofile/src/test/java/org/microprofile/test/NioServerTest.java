@@ -2,10 +2,10 @@ package org.microprofile.test;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 
 import org.microprofile.nio.SocketServer;
+import org.microprofile.nio.handler.ChannelContext;
 import org.microprofile.nio.handler.ProtocolHandler;
 
 public class NioServerTest {
@@ -18,11 +18,11 @@ public class NioServerTest {
 
 }
 
-class NioServerProtocolHandler implements ProtocolHandler {
+class NioServerProtocolHandler implements ProtocolHandler<Object> {
 
     @Override
-    public void read(SelectionKey key, ByteBuffer byteBuffer) throws IOException {
-        SocketChannel client = (SocketChannel) key.channel();
+    public void read(ChannelContext<Object> channelContext, ByteBuffer byteBuffer) throws IOException {
+        SocketChannel client = channelContext.getSocketChannel();
         byteBuffer.flip();
         byte[] dst = new byte[byteBuffer.limit()];
         byteBuffer.get(dst);
@@ -31,7 +31,7 @@ class NioServerProtocolHandler implements ProtocolHandler {
     }
 
     @Override
-    public void close(SelectionKey key) throws IOException {
+    public void close(ChannelContext<Object> channelContext) throws IOException {
 
     }
 }

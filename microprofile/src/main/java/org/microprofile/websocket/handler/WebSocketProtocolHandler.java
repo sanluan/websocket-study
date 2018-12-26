@@ -2,12 +2,12 @@ package org.microprofile.websocket.handler;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.microprofile.file.constant.Constants;
+import org.microprofile.nio.handler.ChannelContext;
 import org.microprofile.nio.handler.ProtocolHandler;
 import org.microprofile.websocket.utils.HttpProtocolUtils;
 import org.microprofile.websocket.utils.MessageUtils;
@@ -16,7 +16,7 @@ import org.microprofile.websocket.utils.MessageUtils;
  * @author zhangxdr
  *
  */
-public class WebSocketProtocolHandler implements ProtocolHandler {
+public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame> {
     protected final Log log = LogFactory.getLog(getClass());
     private MessageHandler handler;
     private boolean server = true;
@@ -30,15 +30,19 @@ public class WebSocketProtocolHandler implements ProtocolHandler {
         this.server = server;
     }
 
+    public <T> T getData(T t) {
+        return t;
+    }
+
     @Override
-    public void read(SelectionKey key, ByteBuffer byteBuffer) throws IOException {
-        SocketChannel socketChannel = (SocketChannel) key.channel();
-        WebSocketFrame frame = (WebSocketFrame) key.attachment();
+    public void read(ChannelContext<WebSocketFrame> channelContext, ByteBuffer byteBuffer) throws IOException {
+        WebSocketFrame frame = channelContext.getAttachment();
         if (null == frame) {
             frame = new WebSocketFrame();
-            key.attach(frame);
+            channelContext.setAttachment(frame);
         }
         try {
+            SocketChannel socketChannel = channelContext.getSocketChannel();
             if (frame.isInitialized()) {
                 ByteBuffer lastMessage = frame.getCachedBuffer();
                 if (null != lastMessage) {
@@ -53,14 +57,14 @@ public class WebSocketProtocolHandler implements ProtocolHandler {
                 while (null != message) {
                     if (MessageUtils.isControl(message.getOpCode())) {
                         if (Message.OPCODE_CLOSE == message.getOpCode()) {
-                            close(key);
+                            close(channelContext);
                             break;
                         } else if (Message.OPCODE_PING == message.getOpCode()) {
                             Message pongMessage = new Message(message.isFin(), message.getRsv(), Message.OPCODE_PONG,
                                     message.getPayload());
                             socketChannel.write(MessageUtils.wrapMessage(pongMessage, false, true));
                         } else {
-                            close(key);
+                            close(channelContext);
                             break;
                         }
                     } else if (message.isFin()) {
@@ -79,7 +83,7 @@ public class WebSocketProtocolHandler implements ProtocolHandler {
                         } else if (Message.OPCODE_STRING == message.getOpCode()) {
                             handler.onMessage(new String(message.getPayload(), Constants.DEFAULT_CHARSET), frame.getSession());
                         } else {
-                            close(key);
+                            close(channelContext);
                             break;
                         }
                     } else if (!message.isFin()) {
@@ -88,7 +92,7 @@ public class WebSocketProtocolHandler implements ProtocolHandler {
                         }
                         frame.addCachedMessage(message.getPayload());
                     } else {
-                        close(key);
+                        close(channelContext);
                         break;
                     }
                     message = MessageUtils.processMessage(byteBuffer);
@@ -105,16 +109,16 @@ public class WebSocketProtocolHandler implements ProtocolHandler {
                 handler.onOpen(frame.getSession());
             }
         } catch (IOException e) {
-            close(key);
+            close(channelContext);
         }
     }
 
     @Override
-    public void close(SelectionKey key) throws IOException {
-        WebSocketFrame frame = (WebSocketFrame) key.attachment();
+    public void close(ChannelContext<WebSocketFrame> channelContext) throws IOException {
+        WebSocketFrame frame = channelContext.getAttachment();
         if (null != frame && frame.isInitialized()) {
             handler.onClose(frame.getSession());
         }
-        key.cancel();
+        channelContext.close();
     }
 }

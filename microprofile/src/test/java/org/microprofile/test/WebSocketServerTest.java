@@ -18,7 +18,7 @@ public class WebSocketServerTest {
             WebSocketServer ws = new WebSocketServer(1000, 1, new ServerMessageHandler());
             log.info("启动。。。");
             ws.asyncListen();
-            Thread.sleep(1000*10);
+            Thread.sleep(1000*100);
             ws.close();
         } catch (IOException e) {
         }
