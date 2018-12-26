@@ -43,16 +43,15 @@ public abstract class SocketProcesser implements Closeable {
                     int n = -1;
                     try {
                         n = client.read(byteBuffer);
-                    } catch (Exception ex) {
-                    }
-                    if (n == -1) {
-                        channelContext.close();
-                    } else if (0 < n) {
-                        ThreadHandler<?> threadHandler = channelContext.getThreadHandler();
-                        threadHandler.addByteBuffer(byteBuffer);
-                        if (!threadHandler.isRunning()) {
-                            pool.execute(threadHandler);
+                        if (0 < n) {
+                            ThreadHandler<?> threadHandler = channelContext.getThreadHandler();
+                            threadHandler.addByteBuffer(byteBuffer);
+                            if (!threadHandler.isRunning()) {
+                                pool.execute(threadHandler);
+                            }
                         }
+                    } catch (Exception ex) {
+                        channelContext.close();
                     }
                 }
             }

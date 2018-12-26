@@ -52,6 +52,13 @@ public class RemoteMessageHandler implements MessageHandler {
     private LocalFileAdaptor localFileAdaptor;
 
     /**
+     * @return the sessionMap
+     */
+    public boolean hasSession() {
+        return !sessionMap.isEmpty();
+    }
+
+    /**
      * @param eventHandler
      * @param localFileAdaptor
      */

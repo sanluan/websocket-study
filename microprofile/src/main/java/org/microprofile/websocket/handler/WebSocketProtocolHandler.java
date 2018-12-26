@@ -57,14 +57,14 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
                 while (null != message) {
                     if (MessageUtils.isControl(message.getOpCode())) {
                         if (Message.OPCODE_CLOSE == message.getOpCode()) {
-                            close(channelContext);
+                            channelContext.close();
                             break;
                         } else if (Message.OPCODE_PING == message.getOpCode()) {
                             Message pongMessage = new Message(message.isFin(), message.getRsv(), Message.OPCODE_PONG,
                                     message.getPayload());
                             socketChannel.write(MessageUtils.wrapMessage(pongMessage, false, true));
                         } else {
-                            close(channelContext);
+                            channelContext.close();
                             break;
                         }
                     } else if (message.isFin()) {
@@ -83,7 +83,7 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
                         } else if (Message.OPCODE_STRING == message.getOpCode()) {
                             handler.onMessage(new String(message.getPayload(), Constants.DEFAULT_CHARSET), frame.getSession());
                         } else {
-                            close(channelContext);
+                            channelContext.close();
                             break;
                         }
                     } else if (!message.isFin()) {
@@ -92,7 +92,7 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
                         }
                         frame.addCachedMessage(message.getPayload());
                     } else {
-                        close(channelContext);
+                        channelContext.close();
                         break;
                     }
                     message = MessageUtils.processMessage(byteBuffer);
@@ -109,7 +109,7 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
                 handler.onOpen(frame.getSession());
             }
         } catch (IOException e) {
-            close(channelContext);
+            channelContext.close();
         }
     }
 
@@ -119,6 +119,5 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
         if (null != frame && frame.isInitialized()) {
             handler.onClose(frame.getSession());
         }
-        channelContext.close();
     }
 }

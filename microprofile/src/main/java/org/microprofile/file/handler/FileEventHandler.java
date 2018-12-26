@@ -54,7 +54,7 @@ public class FileEventHandler implements EventHandler {
         if (eventQueue.contains(event)) {
             eventQueue.remove(event);
             log.info("skip " + event);
-        } else {
+        } else if (remoteMessageHandler.hasSession()) {
             byte code = event.getEventType().getCode();
             log.info("deal " + event);
             if (HEADER_FILE_CREATE == code || HEADER_FILE_MODIFY == code) {
