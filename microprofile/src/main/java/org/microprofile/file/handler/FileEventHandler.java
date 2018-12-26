@@ -68,9 +68,9 @@ public class FileEventHandler implements EventHandler {
                         e.printStackTrace();
                     }
                 } else {
-                    if (HEADER_FILE_MODIFY == code) {
+                    long fileSize = event.getFileSize();
+                    if (HEADER_FILE_MODIFY == code && fileSize > blockSize) {
                         List<BlockChecksum> blockChecksumList = new LinkedList<>();
-                        long fileSize = event.getFileSize();
                         int blocks = (int) (event.getFileSize() / blockSize);
                         try (RandomAccessFile raf = new RandomAccessFile(file, "r"); FileChannel channel = raf.getChannel()) {
                             for (int i = 0; i <= blocks; i++) {
