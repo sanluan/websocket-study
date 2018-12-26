@@ -14,14 +14,11 @@ public abstract class SocketProcesser implements Closeable {
     protected Selector selector;
     protected ExecutorService pool;
     protected ProtocolHandler<?> protocolHandler;
-    protected SocketChannel socketChannel;
 
-    public SocketProcesser(ExecutorService pool, ProtocolHandler<?> protocolHandler, SocketChannel socketChannel)
-            throws IOException {
+    public SocketProcesser(ExecutorService pool, ProtocolHandler<?> protocolHandler) throws IOException {
         this.selector = Selector.open();
         this.pool = pool;
         this.protocolHandler = protocolHandler;
-        this.socketChannel = socketChannel;
     }
 
     public void polling() throws IOException {
@@ -30,19 +27,18 @@ public abstract class SocketProcesser implements Closeable {
             while (keyIterator.hasNext()) {
                 SelectionKey key = keyIterator.next();
                 keyIterator.remove();
-                ChannelContext<?> channelContext;
                 if (key.isAcceptable()) {
                     ServerSocketChannel server = (ServerSocketChannel) key.channel();
                     SocketChannel socketChannel = server.accept();
                     socketChannel.configureBlocking(false);
-                    channelContext = new ChannelContext<>(key, protocolHandler, socketChannel);
-                    socketChannel.register(key.selector(), SelectionKey.OP_READ, channelContext);
+                    socketChannel.register(key.selector(), SelectionKey.OP_READ);
                 } else if (key.isReadable()) {
                     SocketChannel client = (SocketChannel) key.channel();
                     ByteBuffer byteBuffer = ByteBuffer.allocateDirect(1024);
-                    channelContext = (ChannelContext<?>) key.attachment();
+                    ChannelContext<?> channelContext = (ChannelContext<?>) key.attachment();
                     if (null == channelContext) {
-                        channelContext = new ChannelContext<>(key, protocolHandler, socketChannel);
+                        channelContext = new ChannelContext<>(key, protocolHandler, client);
+                        key.attach(channelContext);
                     }
                     int n = -1;
                     try {

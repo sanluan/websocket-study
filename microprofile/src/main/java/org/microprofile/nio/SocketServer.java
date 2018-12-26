@@ -31,7 +31,7 @@ public class SocketServer extends SocketProcesser implements Closeable {
 
     public SocketServer(SocketAddress socketAddress, ExecutorService pool, ProtocolHandler<?> protocolHandler)
             throws IOException {
-        super(pool, protocolHandler, null);
+        super(pool, protocolHandler);
         this.socketAddress = socketAddress;
         this.serverSocketChannel = ServerSocketChannel.open();
     }

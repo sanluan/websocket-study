@@ -18,7 +18,7 @@ public class WebSocketServerTest {
             WebSocketServer ws = new WebSocketServer(1000, 1, new ServerMessageHandler());
             log.info("启动。。。");
             ws.asyncListen();
-            Thread.sleep(1000*100);
+            Thread.sleep(1000 * 100);
             ws.close();
         } catch (IOException e) {
         }
@@ -54,11 +54,13 @@ class ServerMessageHandler implements MessageHandler {
     @Override
     public void onOpen(Session session) throws IOException {
         sessionList.add(session);
+        log.info(session.getId() + "\t connected!");
     }
 
     @Override
     public void onClose(Session session) throws IOException {
         sessionList.remove(session);
+        log.info(session.getId() + "\t closed!");
     }
 
 }
