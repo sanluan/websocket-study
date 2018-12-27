@@ -105,7 +105,6 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
                     }
                     if (flag) {
                         multiByteBuffer = new MultiByteBuffer();
-                        byteBuffer.position(byteBuffer.limit() - multiByteBuffer.remaining());
                         multiByteBuffer.put(byteBuffer);
                     }
                     frame.setCachedBuffer(multiByteBuffer);

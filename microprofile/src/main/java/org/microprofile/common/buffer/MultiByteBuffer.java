@@ -99,7 +99,14 @@ public class MultiByteBuffer {
         if (position >= limit) {
             throw new BufferUnderflowException();
         }
-        if (position == currentStartPosition + byteBufferList.get(byteBufferIndex).limit()) {
+        Integer start = startPositionMap.get(byteBufferIndex);
+        boolean flag;
+        if (start != null) {
+            flag = position == currentStartPosition + byteBufferList.get(byteBufferIndex).limit() - start;
+        } else {
+            flag = position == currentStartPosition + byteBufferList.get(byteBufferIndex).limit();
+        }
+        if (flag) {
             currentStartPosition = position;
             byteBufferIndex++;
         }

@@ -222,7 +222,7 @@ public class LocalFileAdaptor {
             if (localFileAdaptor.isRunning()) {
                 File f = file.toFile();
                 FileChecksum fileChecksum = new FileChecksum(localFileAdaptor.getRelativeFilePath(f), false, attrs.size());
-                if (0 < attrs.size() && attrs.size() < localFileAdaptor.getBlockSize() * 10) {
+                if (0 < attrs.size() && attrs.size() < localFileAdaptor.getBlockSize() * 100) {
                     try (FileInputStream fin = new FileInputStream(f)) {
                         MappedByteBuffer byteBuffer = fin.getChannel().map(FileChannel.MapMode.READ_ONLY, 0, attrs.size());
                         byte[] checksum = EncodeUtils.md2(byteBuffer);
