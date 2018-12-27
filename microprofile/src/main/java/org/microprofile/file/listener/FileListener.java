@@ -63,7 +63,6 @@ public class FileListener implements FileAlterationListener {
 
     private void init(int blockSize) {
         File directory = observer.getDirectory();
-        directory.mkdirs();
         basePath = directory.getAbsolutePath();
         localFileAdaptor = new LocalFileAdaptor(basePath, blockSize);
         fileMonitor = new FileAlterationMonitor();

@@ -167,8 +167,8 @@ public class MultiByteBuffer {
         sb.append(limit());
         sb.append(" index=");
         sb.append(byteBufferIndex);
-        sb.append(" byteBufferList =");
-        sb.append(byteBufferList);
+        sb.append(" size =");
+        sb.append(byteBufferList.size());
         sb.append("]");
         return sb.toString();
     }

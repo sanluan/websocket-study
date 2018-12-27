@@ -32,6 +32,7 @@ public class LocalFileAdaptor {
         super();
         this.basePath = basePath;
         this.blockSize = blockSize;
+        new File(basePath).mkdirs();
     }
 
     /**
