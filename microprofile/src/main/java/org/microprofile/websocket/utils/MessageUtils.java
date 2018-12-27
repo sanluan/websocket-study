@@ -33,7 +33,7 @@ public class MessageUtils {
     }
 
     public static Message processMessage(MultiByteBuffer byteBuffer) throws IOException {
-        if (2 < byteBuffer.remaining()) {
+        if (2 <= byteBuffer.remaining()) {
             byte b = byteBuffer.get();
             boolean fin = (b & 0x80) > 0;
             int rsv = ((b & 0x70) >>> 4);
@@ -69,9 +69,6 @@ public class MessageUtils {
                         return new Message(fin, rsv, Message.OPCODE_CLOSE, null);
                     }
                 } else {
-                    if (0 == payloadLen) {
-                        System.out.println("消息长度" + payloadLen);
-                    }
                     return new Message(fin, rsv, opCode, array);
                 }
             } else {
