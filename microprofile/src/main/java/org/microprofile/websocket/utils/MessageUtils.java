@@ -7,6 +7,7 @@ import java.security.SecureRandom;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
+import org.microprofile.common.buffer.MultiByteBuffer;
 import org.microprofile.websocket.handler.Message;
 
 public class MessageUtils {
@@ -31,7 +32,7 @@ public class MessageUtils {
         return ((opCode & 0x8) > 0);
     }
 
-    public static Message processMessage(ByteBuffer byteBuffer) throws IOException {
+    public static Message processMessage(MultiByteBuffer byteBuffer) throws IOException {
         if (2 < byteBuffer.remaining()) {
             byte b = byteBuffer.get();
             boolean fin = (b & 0x80) > 0;

@@ -1,12 +1,13 @@
 package org.microprofile.websocket.handler;
 
-import java.nio.ByteBuffer;
 import java.util.LinkedList;
 import java.util.List;
 
+import org.microprofile.common.buffer.MultiByteBuffer;
+
 public class WebSocketFrame {
     private Session session;
-    private ByteBuffer cachedBuffer;
+    private MultiByteBuffer cachedBuffer;
     private List<byte[]> cachedMessageList;
     private int cachedMessageLength = 0;
     private byte cachedOpCode;
@@ -29,14 +30,14 @@ public class WebSocketFrame {
     /**
      * @return
      */
-    public ByteBuffer getCachedBuffer() {
+    public MultiByteBuffer getCachedBuffer() {
         return cachedBuffer;
     }
 
     /**
      * @param cachedBuffer
      */
-    public void setCachedBuffer(ByteBuffer cachedBuffer) {
+    public void setCachedBuffer(MultiByteBuffer cachedBuffer) {
         this.cachedBuffer = cachedBuffer;
     }
 

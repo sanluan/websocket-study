@@ -6,6 +6,8 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.channels.NonWritableChannelException;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -56,12 +58,12 @@ public class FileEventHandler implements EventHandler {
             log.info("skip " + event);
         } else if (remoteMessageHandler.hasSession()) {
             byte code = event.getEventType().getCode();
-            log.info("deal " + event);
             if (HEADER_FILE_CREATE == code || HEADER_FILE_MODIFY == code) {
                 File file = localFileAdaptor.getFile(event.getFilePath());
                 int blockSize = localFileAdaptor.getBlockSize();
                 if (blockSize > event.getFileSize()) {
                     try {
+                        log.info("deal " + event);
                         remoteMessageHandler.sendBlock(null, code, event.getFilePath(), event.getFileSize(), -1, 0,
                                 FileUtils.readFileToByteArray(file));
                     } catch (IOException e) {
@@ -72,7 +74,10 @@ public class FileEventHandler implements EventHandler {
                     if (HEADER_FILE_MODIFY == code && fileSize > blockSize) {
                         List<BlockChecksum> blockChecksumList = new LinkedList<>();
                         int blocks = (int) (event.getFileSize() / blockSize);
-                        try (RandomAccessFile raf = new RandomAccessFile(file, "r"); FileChannel channel = raf.getChannel()) {
+                        try (RandomAccessFile raf = new RandomAccessFile(file, "r");
+                                FileChannel channel = raf.getChannel();
+                                FileLock lock = channel.tryLock();) {
+                            log.info("deal " + event);
                             for (int i = 0; i <= blocks; i++) {
                                 if (i == blocks) {
                                     int lastBlockSize = (int) (fileSize % blockSize);
@@ -89,6 +94,7 @@ public class FileEventHandler implements EventHandler {
                             }
                         } catch (FileNotFoundException e) {
                             blockChecksumList.clear();
+                        } catch (NonWritableChannelException e) {
                         } catch (IOException e) {
                         }
                         if (!blockChecksumList.isEmpty()) {
@@ -98,7 +104,8 @@ public class FileEventHandler implements EventHandler {
                     } else {
                         int blocks = (int) (event.getFileSize() / blockSize);
                         byte[] data = new byte[blockSize];
-                        try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
+                        try (RandomAccessFile raf = new RandomAccessFile(file, "r"); FileLock lock = raf.getChannel().tryLock()) {
+                            log.info("deal " + event);
                             for (int i = 0; i <= blocks; i++) {
                                 if (i == blocks) {
                                     int lastBlockSize = (int) (event.getFileSize() % blockSize);
@@ -119,6 +126,7 @@ public class FileEventHandler implements EventHandler {
                                 }
                             }
                         } catch (FileNotFoundException e) {
+                        } catch (NonWritableChannelException e) {
                         } catch (IOException e) {
                         }
                     }
@@ -127,6 +135,7 @@ public class FileEventHandler implements EventHandler {
                 remoteMessageHandler.sendEvent(event);
             }
         }
+
     }
 
     /**

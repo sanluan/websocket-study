@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -83,7 +84,7 @@ public class LocalFileAdaptor {
                 e.printStackTrace();
             }
         } else {
-            try (RandomAccessFile raf = new RandomAccessFile(file, "rw")) {
+            try (RandomAccessFile raf = new RandomAccessFile(file, "rw"); FileLock lock = raf.getChannel().lock()) {
                 raf.setLength(data.length - start);
                 raf.write(data, start, data.length - start);
             } catch (IOException e) {
@@ -109,7 +110,7 @@ public class LocalFileAdaptor {
         } else {
             file.getParentFile().mkdirs();
         }
-        try (RandomAccessFile raf = new RandomAccessFile(file, "rw")) {
+        try (RandomAccessFile raf = new RandomAccessFile(file, "rw"); FileLock lock = raf.getChannel().lock()) {
             if (raf.length() != fileSize) {
                 raf.setLength(fileSize);
             }

@@ -6,6 +6,7 @@ import java.nio.channels.SocketChannel;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.microprofile.common.buffer.MultiByteBuffer;
 import org.microprofile.file.constant.Constants;
 import org.microprofile.nio.handler.ChannelContext;
 import org.microprofile.nio.handler.ProtocolHandler;
@@ -44,17 +45,18 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
         try {
             SocketChannel socketChannel = channelContext.getSocketChannel();
             if (frame.isInitialized()) {
-                ByteBuffer lastMessage = frame.getCachedBuffer();
-                if (null != lastMessage) {
+                MultiByteBuffer multiByteBuffer = frame.getCachedBuffer();
+                if (null != multiByteBuffer) {
                     frame.setCachedBuffer(null);
-                    byteBuffer.flip();
-                    ByteBuffer newByteBuffer = ByteBuffer.allocate(lastMessage.remaining() + byteBuffer.remaining());
-                    newByteBuffer.put(lastMessage);
-                    byteBuffer = newByteBuffer.put(byteBuffer);
+                } else {
+                    multiByteBuffer = new MultiByteBuffer();
                 }
                 byteBuffer.flip();
-                Message message = MessageUtils.processMessage(byteBuffer);
+                multiByteBuffer.put(byteBuffer);
+                Message message = MessageUtils.processMessage(multiByteBuffer);
+                boolean flag = false;
                 while (null != message) {
+                    flag = true;
                     if (MessageUtils.isControl(message.getOpCode())) {
                         if (Message.OPCODE_CLOSE == message.getOpCode()) {
                             channelContext.close();
@@ -95,10 +97,18 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
                         channelContext.close();
                         break;
                     }
-                    message = MessageUtils.processMessage(byteBuffer);
+                    message = MessageUtils.processMessage(multiByteBuffer);
                 }
-                if (byteBuffer.hasRemaining()) {
-                    frame.setCachedBuffer(byteBuffer);
+                if (multiByteBuffer.hasRemaining()) {
+                    if (log.isDebugEnabled()) {
+                        log.debug("byteBuffer还有剩余：" + multiByteBuffer.remaining());
+                    }
+                    if (flag) {
+                        multiByteBuffer = new MultiByteBuffer();
+                        byteBuffer.position(byteBuffer.limit() - multiByteBuffer.remaining());
+                        multiByteBuffer.put(byteBuffer);
+                    }
+                    frame.setCachedBuffer(multiByteBuffer);
                 }
             } else {
                 if (server) {

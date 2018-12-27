@@ -34,21 +34,13 @@ class ServerMessageHandler implements MessageHandler {
     public void onMessage(byte[] message, Session session) throws IOException {
         String str = new String(message);
         log.info(str);
-        if (str.startsWith("群发:")) {
-            for (Session s : sessionList) {
-                s.sendString(str);
-            }
-        }
+        session.sendByte(message);
     }
 
     @Override
     public void onMessage(String message, Session session) throws IOException {
         log.info(message);
-        if (message.startsWith("群发:")) {
-            for (Session s : sessionList) {
-                s.sendString(message);
-            }
-        }
+        session.sendString(message);
     }
 
     @Override

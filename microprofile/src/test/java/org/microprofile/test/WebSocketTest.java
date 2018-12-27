@@ -30,13 +30,18 @@ public class WebSocketTest {
         assertEquals(1, serverHandler.sessions.size());
         assertEquals(1, clientHandler.sessions.size());
         Random random = new Random();
+        Vector<byte[]> sendMessageList = new Vector<>();
         for (int i = 0; i <= 100; i++) {
             byte[] randBytes = new byte[1 + random.nextInt(100000)];
             random.nextBytes(randBytes);
             wsc.sendByte(randBytes);
-            Thread.sleep(500);
-            assertArrayEquals(serverHandler.receivedMessageList.get(0), randBytes);
-            serverHandler.receivedMessageList.remove(0);
+            sendMessageList.add(randBytes);
+        }
+        Thread.sleep(5000);
+        int i = 0;
+        for (byte[] message : serverHandler.receivedMessageList) {
+            assertArrayEquals(message, sendMessageList.get(i++));
+
         }
         wss.close();
         wsc.close();

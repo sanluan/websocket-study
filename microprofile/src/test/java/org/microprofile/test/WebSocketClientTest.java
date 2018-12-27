@@ -56,12 +56,12 @@ class ClientMessageHandler implements MessageHandler {
     @Override
     public void onMessage(byte[] message, Session session) throws IOException {
         String str = new String(message);
-        log.info(str);
+        log.info("recive:" + str);
     }
 
     @Override
     public void onMessage(String message, Session session) throws IOException {
-        log.info(message);
+        log.info("recive:" + message);
     }
 
     @Override
