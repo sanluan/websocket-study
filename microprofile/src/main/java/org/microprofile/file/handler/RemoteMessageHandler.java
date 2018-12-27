@@ -105,12 +105,20 @@ public class RemoteMessageHandler implements MessageHandler {
                 if (-1 == blockSize) {
                     cacheFileSize = localFileAdaptor.createFile(filePath, payload, startIndex);
                 } else {
-                    eventType = EventType.FILE_MODIFY;
                     cacheFileSize = localFileAdaptor.modifyFile(filePath, fileSize, blockSize, blockIndex, payload, startIndex);
+                }
+                if (localFileAdaptor.getFile(filePath).exists()) {
+                    eventType = EventType.FILE_MODIFY;
+                } else {
+                    eventType = EventType.FILE_CREATE;
                 }
                 break;
             case 1:
-                eventType = EventType.FILE_MODIFY;
+                if (localFileAdaptor.getFile(filePath).exists()) {
+                    eventType = EventType.FILE_MODIFY;
+                } else {
+                    eventType = EventType.FILE_CREATE;
+                }
                 cacheFileSize = localFileAdaptor.modifyFile(filePath, fileSize, blockSize, blockIndex, payload, startIndex);
                 break;
             case 2:
@@ -364,7 +372,6 @@ public class RemoteMessageHandler implements MessageHandler {
 
     public void handle(byte[] payload, Session session) {
         byte header = payload[0];
-        log.info("receive " + header);
         if (0 <= header && HEADER_MAX_EVENT >= header && HEADER_LENGTH < payload.length) {
             handleEvent(header, payload);
         } else if (HEADER_FILE_CHECKSUM == header && !master) {

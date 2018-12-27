@@ -69,6 +69,9 @@ public class MessageUtils {
                         return new Message(fin, rsv, Message.OPCODE_CLOSE, null);
                     }
                 } else {
+                    if (0 == payloadLen) {
+                        System.out.println("消息长度" + payloadLen);
+                    }
                     return new Message(fin, rsv, opCode, array);
                 }
             } else {
