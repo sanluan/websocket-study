@@ -199,7 +199,7 @@ public class MultiByteBuffer {
     }
 
     public String toString() {
-        StringBuffer sb = new StringBuffer();
+        StringBuilder sb = new StringBuilder();
         sb.append(getClass().getName());
         sb.append("[pos=");
         sb.append(position());

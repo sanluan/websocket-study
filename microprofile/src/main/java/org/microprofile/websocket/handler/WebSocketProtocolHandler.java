@@ -21,6 +21,7 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
     protected final Log log = LogFactory.getLog(getClass());
     private MessageHandler handler;
     private boolean server = true;
+    private int maxHeaderLength = 1024 * 10;
 
     public WebSocketProtocolHandler(MessageHandler handler) {
         this.handler = handler;
@@ -37,23 +38,27 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
 
     @Override
     public void read(ChannelContext<WebSocketFrame> channelContext, ByteBuffer byteBuffer) throws IOException {
+        byteBuffer.flip();
         WebSocketFrame frame = channelContext.getAttachment();
         if (null == frame) {
-            frame = new WebSocketFrame();
-            channelContext.setAttachment(frame);
+            channelContext.setAttachment(frame = new WebSocketFrame());
         }
         try {
             SocketChannel socketChannel = channelContext.getSocketChannel();
             if (frame.isInitialized()) {
                 MultiByteBuffer multiByteBuffer = frame.getCachedBuffer();
                 if (null != multiByteBuffer) {
-                    frame.setCachedBuffer(null);
+                    if (frame.getPayloadLength() > multiByteBuffer.remaining() + byteBuffer.remaining()) {
+                        return;
+                    } else {
+                        frame.setCachedBuffer(null);
+                        frame.setPayloadLength(0);
+                    }
                 } else {
                     multiByteBuffer = new MultiByteBuffer();
                 }
-                byteBuffer.flip();
                 multiByteBuffer.put(byteBuffer);
-                Message message = MessageUtils.processMessage(multiByteBuffer);
+                Message message = MessageUtils.processMessage(multiByteBuffer, frame);
                 boolean flag = false;
                 while (null != message) {
                     flag = true;
@@ -97,7 +102,7 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
                         channelContext.close();
                         break;
                     }
-                    message = MessageUtils.processMessage(multiByteBuffer);
+                    message = MessageUtils.processMessage(multiByteBuffer, frame);
                 }
                 if (multiByteBuffer.hasRemaining()) {
                     if (log.isDebugEnabled()) {
@@ -106,15 +111,36 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
                     if (flag) {
                         multiByteBuffer = new MultiByteBuffer();
                         multiByteBuffer.put(byteBuffer);
-                        System.out.println(multiByteBuffer);
                     }
                     frame.setCachedBuffer(multiByteBuffer);
                 }
             } else {
                 if (server) {
-                    HttpProtocolUtils.processProtocol(socketChannel, byteBuffer);
+                    MultiByteBuffer multiByteBuffer = frame.getCachedBuffer();
+                    if (null != multiByteBuffer) {
+                        frame.setCachedBuffer(null);
+                    } else {
+                        multiByteBuffer = new MultiByteBuffer();
+                    }
+                    multiByteBuffer.put(byteBuffer);
+                    if (multiByteBuffer.remaining() > maxHeaderLength) {
+                        channelContext.close();
+                        return;
+                    } else if (HttpProtocolUtils.isEnough(multiByteBuffer)) {
+                        frame.setCachedBuffer(multiByteBuffer);
+                        return;
+                    } else {
+                        Session session = HttpProtocolUtils.processProtocol(socketChannel, multiByteBuffer);
+                        if (null == session) {
+                            channelContext.close();
+                            return;
+                        } else {
+                            frame.setSession(session);
+                        }
+                    }
+                } else {
+                    frame.setSession(new Session(socketChannel));
                 }
-                frame.setSession(new Session(socketChannel));
                 frame.setInitialized(true);
                 handler.onOpen(frame.getSession());
             }

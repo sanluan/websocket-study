@@ -50,8 +50,8 @@ public class SocketServer extends SocketProcesser implements Closeable {
     }
 
     public void asyncListen() throws IOException {
-        StringBuffer sb = new StringBuffer("Thread-server ");
-        sb.append(socketAddress).append(" listener");
+        StringBuilder sb = new StringBuilder("Thread [Server ");
+        sb.append(socketAddress).append(" listener]");
         new Thread(sb.toString()) {
             public void run() {
                 try {

@@ -38,9 +38,9 @@ public class SocketClient extends SocketProcesser implements Closeable {
     }
 
     public void asyncListen() throws IOException {
-        StringBuffer sb = new StringBuffer("Thread-client ");
+        StringBuilder sb = new StringBuilder("Thread [Client ");
         sb.append(socketChannel.getLocalAddress()).append(" to server ").append(socketChannel.getRemoteAddress())
-                .append(" listener");
+                .append(" listener]");
         new Thread(sb.toString()) {
             public void run() {
                 try {

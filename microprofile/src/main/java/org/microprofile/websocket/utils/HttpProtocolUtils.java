@@ -6,8 +6,12 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.HashMap;
+import java.util.Map;
 
+import org.microprofile.common.buffer.MultiByteBuffer;
 import org.microprofile.common.utils.EncodeUtils;
+import org.microprofile.websocket.handler.Session;
 
 public class HttpProtocolUtils {
     private static final String HTTP_ERROR = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/html\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n";
@@ -15,25 +19,61 @@ public class HttpProtocolUtils {
     private static final String ENCODE = "UTF-8";
     private static MessageDigest mssageDigest;
 
-    public static void processProtocol(SocketChannel client, ByteBuffer byteBuffer) throws IOException {
-        byteBuffer.flip();
-        StringBuilder stringBuilder = new StringBuilder();
-        while (byteBuffer.hasRemaining()) {
-            stringBuilder.append((char) byteBuffer.get());
+    public static boolean isEnough(MultiByteBuffer multiByteBuffer) throws IOException {
+        if (multiByteBuffer.remaining() > 2 && multiByteBuffer.get(multiByteBuffer.limit() - 1) != (byte) '\n'
+                && !(multiByteBuffer.get(multiByteBuffer.limit() - 2) == (byte) '\n'
+                        || multiByteBuffer.remaining() > 3 && multiByteBuffer.get(multiByteBuffer.limit() - 2) == (byte) '\r'
+                                && multiByteBuffer.get(multiByteBuffer.limit() - 3) == (byte) '\n')) {
+            return false;
+        } else {
+            return true;
         }
-        byteBuffer.clear();
-        String request = stringBuilder.toString();
-        int keyindex = request.indexOf("Sec-WebSocket-Key:");
-        if (0 < keyindex) {
-            String key = request.substring(keyindex + 19, keyindex + 43);
-            String new_key = key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-            byte[] key_sha1 = sha1(new_key);
+    }
+
+    public static Session processProtocol(SocketChannel client, MultiByteBuffer multiByteBuffer) throws IOException {
+        Session session = null;
+        String key = null;
+        String value = null;
+        Map<String, String> headers = new HashMap<>();
+        String url = null;
+        StringBuilder stringBuilder = new StringBuilder();
+        while (multiByteBuffer.hasRemaining()) {
+            char c = (char) multiByteBuffer.get();
+            if (c == '\n' || c == '\r') {
+                if (null != key) {
+                    value = stringBuilder.toString();
+                    stringBuilder.setLength(0);
+                    headers.put(key, value);
+                    key = null;
+                } else {
+                    String firstRow = stringBuilder.toString();
+                    if (firstRow.length() > 0) {
+                        String[] array = firstRow.split(" ");
+                        if (array.length >= 2) {
+                            url = array[1];
+                        }
+                    }
+                }
+            } else if (c == ':') {
+                key = stringBuilder.toString();
+                stringBuilder.setLength(0);
+            } else if (null != url && c != ' ') {
+                stringBuilder.append(c);
+            }
+        }
+        String secKey = headers.get("Sec-WebSocket-Key");
+        if (null != secKey && null != url) {
+            byte[] key_sha1 = sha1(secKey + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
             StringBuilder sb = new StringBuilder(HTTP_WEBSOCKET_RESPONSE);
             sb.append(EncodeUtils.base64Encode(key_sha1)).append("\r\n\r\n");
+            session = new Session(client);
+            session.setHeaders(headers);
+            session.setUrl(url);
             send(client, sb.toString());
         } else {
             send(client, HTTP_ERROR);
         }
+        return session;
     }
 
     public static void sendHandshake(SocketChannel client, String host, int port) throws IOException {

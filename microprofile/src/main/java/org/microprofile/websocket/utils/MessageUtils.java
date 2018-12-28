@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.microprofile.common.buffer.MultiByteBuffer;
 import org.microprofile.websocket.handler.Message;
+import org.microprofile.websocket.handler.WebSocketFrame;
 
 public class MessageUtils {
     private static final Queue<SecureRandom> randoms = new ConcurrentLinkedQueue<SecureRandom>();
@@ -32,7 +33,7 @@ public class MessageUtils {
         return ((opCode & 0x8) > 0);
     }
 
-    public static Message processMessage(MultiByteBuffer byteBuffer) throws IOException {
+    public static Message processMessage(MultiByteBuffer byteBuffer, WebSocketFrame webSocketFrame) throws IOException {
         if (2 <= byteBuffer.remaining()) {
             byte b = byteBuffer.get();
             boolean fin = (b & 0x80) > 0;
@@ -41,15 +42,15 @@ public class MessageUtils {
             byte b2 = byteBuffer.get();
             boolean hasMask = (b2 & 0x80) > 0;
             int payloadLen = (b2 & 0x7F);
-            byte[] payloadLenngthByte = null;
+            byte[] payloadLengthByte = null;
             if (126 <= payloadLen) {
                 if (126 == payloadLen) {
-                    payloadLenngthByte = new byte[2];
+                    payloadLengthByte = new byte[2];
                 } else {
-                    payloadLenngthByte = new byte[8];
+                    payloadLengthByte = new byte[8];
                 }
-                byteBuffer.get(payloadLenngthByte);
-                payloadLen = byteArrayToInt(payloadLenngthByte);
+                byteBuffer.get(payloadLengthByte);
+                payloadLen = byteArrayToInt(payloadLengthByte);
             }
             if (hasMask && payloadLen + 4 <= byteBuffer.remaining() || payloadLen <= byteBuffer.remaining()) {
                 byte[] array = new byte[payloadLen];
@@ -72,9 +73,10 @@ public class MessageUtils {
                     return new Message(fin, rsv, opCode, array);
                 }
             } else {
+                webSocketFrame.setPayloadLength(payloadLen);
                 byteBuffer.position(byteBuffer.position() - 2);
-                if (null != payloadLenngthByte) {
-                    byteBuffer.position(byteBuffer.position() - payloadLenngthByte.length);
+                if (null != payloadLengthByte) {
+                    byteBuffer.position(byteBuffer.position() - payloadLengthByte.length);
                 }
             }
         }
