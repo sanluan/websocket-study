@@ -13,13 +13,48 @@ public class MultiByteBuffer {
     private int position = 0;
     private int limit = 0;
     private int byteBufferIndex = 0;
-    private int currentStartPosition = 0;
+    private int currentLimit = 0;
+    private ByteBuffer byteBuffer;
 
     /**
      * @return
      */
     public byte get() {
-        return byteBufferList.get(nextGetByteBufferIndex()).get();
+        return nextGetByteBuffer().get();
+    }
+
+    public byte get(int i) {
+        if (0 > i || limit <= i) {
+            throw new IndexOutOfBoundsException();
+        }
+        if (i > position) {
+            int currentLimit = this.currentLimit;
+            int byteBufferIndex = this.byteBufferIndex;
+            ByteBuffer byteBuffer = this.byteBuffer;
+            while (i >= currentLimit) {
+                byteBuffer = byteBufferList.get(++byteBufferIndex);
+                currentLimit += byteBuffer.remaining();
+            }
+            return byteBuffer.get(i - currentLimit + byteBuffer.remaining());
+        } else if (i < position) {
+            int byteBufferIndex = this.byteBufferIndex;
+            ByteBuffer byteBuffer = this.byteBuffer;
+            int lastLimit = this.currentLimit - byteBuffer.limit() + startPositionMap.get(byteBufferIndex);
+            while (i < lastLimit) {
+                if (byteBufferIndex == 0) {
+                    System.out.println(1);
+                }
+                byteBuffer = byteBufferList.get(--byteBufferIndex);
+                lastLimit -= byteBuffer.limit()-startPositionMap.get(byteBufferIndex);
+            }
+            return byteBuffer.get(i - lastLimit + byteBuffer.remaining());
+        } else {
+            ByteBuffer byteBuffer = this.byteBuffer;
+            if (position == currentLimit) {
+                byteBuffer = byteBufferList.get(byteBufferIndex + 1);
+            }
+            return byteBuffer.get(byteBuffer.position());
+        }
     }
 
     /**
@@ -40,78 +75,83 @@ public class MultiByteBuffer {
      * @param position
      */
     public void position(int position) {
-        if ((position > limit) || (position < 0)) {
+        if (0 > position || position > limit) {
             throw new IllegalArgumentException();
         }
-        int length = position > this.position ? position - this.position : this.position - position;
-        ByteBuffer currentByteBuffer = byteBufferList.get(byteBufferIndex);
+        boolean increase = position > this.position;
+        int length = increase ? position - this.position : this.position - position;
+        ByteBuffer currentByteBuffer = byteBuffer;
         while (length > 0) {
-            Integer startOrEnd;
-            int temp;
-            if (position > this.position) {
-                startOrEnd = currentByteBuffer.limit();
-                temp = length - currentByteBuffer.remaining();
-            } else {
-                startOrEnd = startPositionMap.get(byteBufferIndex);
-                if (null == startOrEnd) {
-                    temp = length - currentByteBuffer.position();
-                } else {
-                    temp = length - (currentByteBuffer.position() - startOrEnd);
-                }
+            Integer currentStart = null;
+            if (!increase) {
+                currentStart = startPositionMap.get(byteBufferIndex);
             }
+            int temp = increase ? length - currentByteBuffer.remaining() : length - (currentByteBuffer.position() - currentStart);
             if (temp > 0) {
-                if (position > this.position) {
+                if (increase) {
+                    currentByteBuffer.position(currentByteBuffer.limit());
                     byteBufferIndex++;
-                    currentStartPosition += currentByteBuffer.remaining();
                 } else {
-                    currentStartPosition -= currentByteBuffer.remaining();
+                    currentByteBuffer.position(currentStart);
                     byteBufferIndex--;
                 }
-                currentByteBuffer.position(startOrEnd);
-                currentByteBuffer = byteBufferList.get(byteBufferIndex);
+                byteBuffer = currentByteBuffer = byteBufferList.get(byteBufferIndex);
             } else {
-                if (position > this.position) {
-                    currentByteBuffer.position(currentByteBuffer.position() + length);
-                } else {
-                    currentByteBuffer.position(currentByteBuffer.position() - length);
-                }
+                currentByteBuffer.position(currentByteBuffer.position() + (increase ? length : -length));
             }
             length = temp;
         }
         this.position = position;
+        this.currentLimit = position + currentByteBuffer.remaining();
     }
 
     /**
      * @param byteBuffer
+     * @return
      */
-    public void put(ByteBuffer byteBuffer) {
-        byteBufferList.add(byteBuffer);
-        limit += byteBuffer.remaining();
-        if (byteBuffer.position() > 0) {
-            startPositionMap.put(byteBufferList.size() - 1, byteBuffer.position());
+    public MultiByteBuffer put(ByteBuffer byteBuffer) {
+        if (byteBufferList.isEmpty()) {
+            currentLimit = byteBuffer.limit();
+            this.byteBuffer = byteBuffer;
         }
+        startPositionMap.put(byteBufferList.size(), byteBuffer.position());
+        limit += byteBuffer.remaining();
+        byteBufferList.add(byteBuffer);
+        return this;
+    }
+
+    /**
+     * @param byteBuffers
+     * @return
+     */
+    public MultiByteBuffer put(ByteBuffer... byteBuffers) {
+        if (byteBufferList.isEmpty() && byteBuffers.length > 0) {
+            currentLimit = byteBuffers[0].limit();
+            this.byteBuffer = byteBuffers[0];
+        }
+        for (ByteBuffer byteBuffer : byteBuffers) {
+            startPositionMap.put(byteBufferList.size(), byteBuffer.position());
+            limit += byteBuffer.remaining();
+            byteBufferList.add(byteBuffer);
+        }
+        return this;
     }
 
     /**
      * @return
      */
-    private int nextGetByteBufferIndex() {
+    private ByteBuffer nextGetByteBuffer() {
         if (position >= limit) {
             throw new BufferUnderflowException();
         }
-        Integer start = startPositionMap.get(byteBufferIndex);
-        boolean flag;
-        if (start != null) {
-            flag = position == currentStartPosition + byteBufferList.get(byteBufferIndex).limit() - start;
-        } else {
-            flag = position == currentStartPosition + byteBufferList.get(byteBufferIndex).limit();
-        }
-        if (flag) {
-            currentStartPosition = position;
+        if (position == currentLimit) {
             byteBufferIndex++;
+            byteBuffer = byteBufferList.get(byteBufferIndex);
+            currentLimit = position + byteBuffer.remaining();
         }
         position++;
-        return byteBufferIndex;
+        return byteBuffer;
+
     }
 
     /**
@@ -169,6 +209,8 @@ public class MultiByteBuffer {
         sb.append(byteBufferIndex);
         sb.append(" size =");
         sb.append(byteBufferList.size());
+        sb.append(" currentLimit =");
+        sb.append(currentLimit);
         sb.append("]");
         return sb.toString();
     }
