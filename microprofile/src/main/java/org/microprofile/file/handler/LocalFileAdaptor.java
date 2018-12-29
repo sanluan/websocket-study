@@ -112,9 +112,6 @@ public class LocalFileAdaptor {
             file.getParentFile().mkdirs();
         }
         try (RandomAccessFile raf = new RandomAccessFile(file, "rw"); FileLock lock = raf.getChannel().lock()) {
-            if (raf.length() != fileSize) {
-                raf.setLength(fileSize);
-            }
             raf.seek(blockIndex * blockSize);
             raf.write(data, startIndex, data.length - startIndex);
         } catch (IOException e) {

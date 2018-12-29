@@ -65,9 +65,9 @@ public class MessageUtils {
                 }
                 if (isControl(opCode)) {
                     if (fin && payloadLen <= 125) {
-                        return new Message(fin, rsv, opCode, null);
+                        return new Message(fin, rsv, opCode, array);
                     } else {
-                        return new Message(fin, rsv, Message.OPCODE_CLOSE, null);
+                        return new Message(fin, rsv, Message.OPCODE_CLOSE, array);
                     }
                 } else {
                     return new Message(fin, rsv, opCode, array);
