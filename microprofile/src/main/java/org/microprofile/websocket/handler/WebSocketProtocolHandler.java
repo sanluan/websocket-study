@@ -2,7 +2,6 @@ package org.microprofile.websocket.handler;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.SocketChannel;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -14,7 +13,6 @@ import org.microprofile.websocket.utils.HttpProtocolUtils;
 import org.microprofile.websocket.utils.MessageUtils;
 
 /**
- * @author zhangxdr
  *
  */
 public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame> {
@@ -32,47 +30,36 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
         this.server = server;
     }
 
-    public <T> T getData(T t) {
-        return t;
-    }
-
     @Override
     public void read(ChannelContext<WebSocketFrame> channelContext, ByteBuffer byteBuffer) throws IOException {
-        byteBuffer.flip();
         WebSocketFrame frame = channelContext.getAttachment();
         if (null == frame) {
             channelContext.setAttachment(frame = new WebSocketFrame());
         }
+        byteBuffer.flip();
         try {
-            SocketChannel socketChannel = channelContext.getSocketChannel();
+            MultiByteBuffer multiByteBuffer = frame.getCachedBuffer();
+            if (null == multiByteBuffer) {
+                multiByteBuffer = new MultiByteBuffer();
+            }
+            multiByteBuffer.put(byteBuffer);
             if (frame.isInitialized()) {
-                MultiByteBuffer multiByteBuffer = frame.getCachedBuffer();
-                if (null != multiByteBuffer) {
-                    if (frame.getPayloadLength() > multiByteBuffer.remaining() + byteBuffer.remaining()) {
-                        return;
-                    } else {
-                        frame.setCachedBuffer(null);
-                        frame.setPayloadLength(0);
-                    }
-                } else {
-                    multiByteBuffer = new MultiByteBuffer();
+                if (frame.getPayloadLength() > multiByteBuffer.remaining()) {
+                    return;
                 }
-                multiByteBuffer.put(byteBuffer);
                 Message message = MessageUtils.processMessage(multiByteBuffer, frame);
-                boolean flag = false;
                 while (null != message) {
-                    flag = true;
                     if (MessageUtils.isControl(message.getOpCode())) {
                         if (Message.OPCODE_CLOSE == message.getOpCode()) {
                             channelContext.close();
-                            break;
+                            return;
                         } else if (Message.OPCODE_PING == message.getOpCode()) {
                             Message pongMessage = new Message(message.isFin(), message.getRsv(), Message.OPCODE_PONG,
                                     message.getPayload());
-                            socketChannel.write(MessageUtils.wrapMessage(pongMessage, false, true));
+                            channelContext.getSocketChannel().write(MessageUtils.wrapMessage(pongMessage, false, true));
                         } else {
                             channelContext.close();
-                            break;
+                            return;
                         }
                     } else if (message.isFin()) {
                         if (0 != frame.getCachedMessageLength() && Message.OPCODE_PART == message.getOpCode()) {
@@ -91,7 +78,7 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
                             handler.onMessage(new String(message.getPayload(), Constants.DEFAULT_CHARSET), frame.getSession());
                         } else {
                             channelContext.close();
-                            break;
+                            return;
                         }
                     } else if (!message.isFin()) {
                         if (0 != frame.getCachedMessageLength()) {
@@ -100,49 +87,43 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
                         frame.addCachedMessage(message.getPayload());
                     } else {
                         channelContext.close();
-                        break;
+                        return;
                     }
                     message = MessageUtils.processMessage(multiByteBuffer, frame);
                 }
-                if (multiByteBuffer.hasRemaining()) {
-                    if (log.isDebugEnabled()) {
-                        log.debug("byteBuffer还有剩余：" + multiByteBuffer.remaining());
-                    }
-                    if (flag) {
-                        multiByteBuffer = new MultiByteBuffer();
-                        multiByteBuffer.put(byteBuffer);
-                    }
-                    frame.setCachedBuffer(multiByteBuffer);
-                }
             } else {
-                if (server) {
-                    MultiByteBuffer multiByteBuffer = frame.getCachedBuffer();
-                    if (null != multiByteBuffer) {
-                        frame.setCachedBuffer(null);
-                    } else {
-                        multiByteBuffer = new MultiByteBuffer();
-                    }
-                    multiByteBuffer.put(byteBuffer);
+                if (!HttpProtocolUtils.isEnough(multiByteBuffer)) {
+                    frame.setCachedBuffer(multiByteBuffer);
                     if (multiByteBuffer.remaining() > maxHeaderLength) {
                         channelContext.close();
-                        return;
-                    } else if (HttpProtocolUtils.isEnough(multiByteBuffer)) {
-                        frame.setCachedBuffer(multiByteBuffer);
-                        return;
-                    } else {
-                        Session session = HttpProtocolUtils.processProtocol(socketChannel, multiByteBuffer);
-                        if (null == session) {
-                            channelContext.close();
-                            return;
-                        } else {
-                            frame.setSession(session);
-                        }
                     }
+                    return;
+                }
+                Session session;
+                if (server) {
+                    session = HttpProtocolUtils.processServerProtocol(channelContext.getSocketChannel(), multiByteBuffer);
                 } else {
-                    frame.setSession(new Session(socketChannel));
+                    session = HttpProtocolUtils.processClientProtocol(channelContext.getSocketChannel(), multiByteBuffer);
+                }
+                if (null == session) {
+                    channelContext.close();
+                    return;
+                } else {
+                    frame.setSession(session);
+                    frame.setCachedBuffer(null);
                 }
                 frame.setInitialized(true);
                 handler.onOpen(frame.getSession());
+            }
+            if (byteBuffer.hasRemaining()) {
+                if (multiByteBuffer.size() > 1) {
+                    multiByteBuffer = new MultiByteBuffer();
+                    multiByteBuffer.put(byteBuffer);
+                }
+                frame.setCachedBuffer(multiByteBuffer);
+            } else {
+                frame.setCachedBuffer(null);
+                frame.setPayloadLength(0);
             }
         } catch (IOException e) {
             channelContext.close();

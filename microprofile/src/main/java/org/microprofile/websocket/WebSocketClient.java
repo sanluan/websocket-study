@@ -14,13 +14,13 @@ import org.microprofile.websocket.utils.MessageUtils;
 public class WebSocketClient implements Closeable {
     private SocketClient socketClient;
 
-    public WebSocketClient(String host, int port, MessageHandler messageHandler) throws IOException {
+    public WebSocketClient(String host, int port, String url, MessageHandler messageHandler) throws IOException {
         if (null == messageHandler) {
             throw new IllegalArgumentException("messageHandler can't be null");
         }
         this.socketClient = new SocketClient(host, port, Executors.newFixedThreadPool(1),
                 new WebSocketProtocolHandler(messageHandler, false));
-        HttpProtocolUtils.sendHandshake(socketClient.getSocketChannel(), host, port);
+        HttpProtocolUtils.sendHandshake(socketClient.getSocketChannel(), host, port, url);
     }
 
     public void listen() throws IOException {

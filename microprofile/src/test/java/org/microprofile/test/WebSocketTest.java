@@ -24,7 +24,7 @@ public class WebSocketTest {
         WebSocketServer wss = new WebSocketServer(1000, 1, serverHandler);
         wss.asyncListen();
         WebSocketTestHandler clientHandler = new WebSocketTestHandler();
-        WebSocketClient wsc = new WebSocketClient("localhost", 1000, clientHandler);
+        WebSocketClient wsc = new WebSocketClient("localhost", 1000, "/", clientHandler);
         wsc.asyncListen();
         Thread.sleep(1000);
         assertEquals(1, serverHandler.sessions.size());

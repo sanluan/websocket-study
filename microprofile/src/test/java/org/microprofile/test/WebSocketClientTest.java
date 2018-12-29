@@ -14,7 +14,7 @@ public class WebSocketClientTest {
 
     public static void main(String[] args) throws InterruptedException {
         try {
-            WebSocketClient ws = new WebSocketClient("localhost", 1000, new ClientMessageHandler());
+            WebSocketClient ws = new WebSocketClient("localhost", 1000, "/", new ClientMessageHandler());
             log.info("启动。。。");
             new WebSocketClientThread(ws).start();
             log.info("please input you message,quit to exit");

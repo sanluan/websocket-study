@@ -197,6 +197,10 @@ public class MultiByteBuffer {
         }
         return this;
     }
+    
+    public int size() {
+        return byteBufferList.size();
+    }
 
     public String toString() {
         StringBuilder sb = new StringBuilder();

@@ -27,8 +27,8 @@ public class ChannelContext<T> implements Closeable {
             key.cancel();
             threadHandler.close();
             protocolHandler.close(this);
-            socketChannel.close();
         }
+        socketChannel.close();
     }
 
     /**
