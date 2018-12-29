@@ -75,7 +75,7 @@ public class HttpProtocolUtils {
                     headers.put(key, value);
                     key = null;
                 }
-            } else if (null != key && c == ':') {
+            } else if (null == key && c == ':') {
                 key = stringBuilder.toString();
                 stringBuilder.setLength(0);
             } else if (c != ' ') {
@@ -105,9 +105,9 @@ public class HttpProtocolUtils {
 
     public static void sendHandshake(SocketChannel server, String host, int port, String url) throws IOException {
         StringBuilder sb = new StringBuilder("GET ");
-        sb.append(url).append(" HTTP/1.1\\r\\nUpgrade: websocket\\r\\nConnection: Upgrade\\r\\nHost: ");
+        sb.append(url).append(" HTTP/1.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nHost: ");
         sb.append(host).append(":").append(port).append(
-                "\\r\\nOrigin: null\\r\\nSec-WebSocket-Key: SN3OSin4/Zok8kmgrD8qxQ==\\r\\nSec-WebSocket-Version: 13\\r\\nSec-WebSocket-Extensions: x-webkit-deflate-frame");
+                "\r\nOrigin: null\r\nSec-WebSocket-Key: SN3OSin4/Zok8kmgrD8qxQ==\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Extensions: x-webkit-deflate-frame\r\n\r\n");
         send(server, sb.toString());
     }
 

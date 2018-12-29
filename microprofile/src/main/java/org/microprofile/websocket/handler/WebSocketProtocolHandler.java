@@ -110,10 +110,9 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
                     return;
                 } else {
                     frame.setSession(session);
-                    frame.setCachedBuffer(null);
+                    frame.setInitialized(true);
+                    handler.onOpen(frame.getSession());
                 }
-                frame.setInitialized(true);
-                handler.onOpen(frame.getSession());
             }
             if (byteBuffer.hasRemaining()) {
                 if (multiByteBuffer.size() > 1) {
