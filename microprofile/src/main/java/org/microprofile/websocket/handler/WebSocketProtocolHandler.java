@@ -91,6 +91,16 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
                     }
                     message = MessageUtils.processMessage(multiByteBuffer, frame);
                 }
+                if (byteBuffer.hasRemaining()) {
+                    if (multiByteBuffer.size() > 1) {
+                        multiByteBuffer = new MultiByteBuffer();
+                        multiByteBuffer.put(byteBuffer);
+                    }
+                    frame.setCachedBuffer(multiByteBuffer);
+                } else {
+                    frame.setCachedBuffer(null);
+                    frame.setPayloadLength(0);
+                }
             } else {
                 if (!HttpProtocolUtils.isEnough(multiByteBuffer)) {
                     frame.setCachedBuffer(multiByteBuffer);
@@ -113,16 +123,7 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
                     frame.setInitialized(true);
                     handler.onOpen(frame.getSession());
                 }
-            }
-            if (byteBuffer.hasRemaining()) {
-                if (multiByteBuffer.size() > 1) {
-                    multiByteBuffer = new MultiByteBuffer();
-                    multiByteBuffer.put(byteBuffer);
-                }
-                frame.setCachedBuffer(multiByteBuffer);
-            } else {
                 frame.setCachedBuffer(null);
-                frame.setPayloadLength(0);
             }
         } catch (IOException e) {
             channelContext.close();

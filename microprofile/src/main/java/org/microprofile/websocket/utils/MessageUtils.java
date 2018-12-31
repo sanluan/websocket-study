@@ -30,17 +30,17 @@ public class MessageUtils {
     }
 
     public static boolean isControl(byte opCode) {
-        return ((opCode & 0x8) > 0);
+        return (0 < (opCode & 0x8));
     }
 
     public static Message processMessage(MultiByteBuffer byteBuffer, WebSocketFrame webSocketFrame) throws IOException {
         if (2 <= byteBuffer.remaining()) {
             byte b = byteBuffer.get();
-            boolean fin = (b & 0x80) > 0;
+            boolean fin = 0 < (b & 0x80);
             int rsv = ((b & 0x70) >>> 4);
             byte opCode = (byte) (b & 0xF);
             byte b2 = byteBuffer.get();
-            boolean hasMask = (b2 & 0x80) > 0;
+            boolean hasMask = 0 < (b2 & 0x80);
             int payloadLen = (b2 & 0x7F);
             byte[] payloadLengthByte = null;
             if (126 <= payloadLen) {
@@ -64,7 +64,7 @@ public class MessageUtils {
                     byteBuffer.get(array);
                 }
                 if (isControl(opCode)) {
-                    if (fin && payloadLen <= 125) {
+                    if (fin && 125 >= payloadLen) {
                         return new Message(fin, rsv, opCode, array);
                     } else {
                         return new Message(fin, rsv, Message.OPCODE_CLOSE, array);

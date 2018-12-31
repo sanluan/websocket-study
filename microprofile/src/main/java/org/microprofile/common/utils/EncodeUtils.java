@@ -20,7 +20,7 @@ public class EncodeUtils {
             throw new IllegalArgumentException("Invalid base64 input");
         }
         byte decoded[] = new byte[((input.length() * 3) / 4)
-                - (input.indexOf('=') > 0 ? (input.length() - input.indexOf('=')) : 0)];
+                - (0 < input.indexOf('=') ? (input.length() - input.indexOf('=')) : 0)];
         char[] inChars = input.toCharArray();
         int j = 0;
         int b[] = new int[4];

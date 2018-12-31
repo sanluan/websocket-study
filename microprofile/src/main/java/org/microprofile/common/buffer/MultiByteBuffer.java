@@ -27,29 +27,23 @@ public class MultiByteBuffer {
         if (0 > i || limit <= i) {
             throw new IndexOutOfBoundsException();
         }
+        ByteBuffer byteBuffer = this.byteBuffer;
+        int byteBufferIndex = this.byteBufferIndex;
         if (i > position) {
             int currentLimit = this.currentLimit;
-            int byteBufferIndex = this.byteBufferIndex;
-            ByteBuffer byteBuffer = this.byteBuffer;
             while (i >= currentLimit) {
                 byteBuffer = byteBufferList.get(++byteBufferIndex);
                 currentLimit += byteBuffer.remaining();
             }
             return byteBuffer.get(i - currentLimit + byteBuffer.remaining());
         } else if (i < position) {
-            int byteBufferIndex = this.byteBufferIndex;
-            ByteBuffer byteBuffer = this.byteBuffer;
             int lastLimit = this.currentLimit - byteBuffer.limit() + startPositionMap.get(byteBufferIndex);
             while (i < lastLimit) {
-                if (byteBufferIndex == 0) {
-                    System.out.println(1);
-                }
                 byteBuffer = byteBufferList.get(--byteBufferIndex);
-                lastLimit -= byteBuffer.limit()-startPositionMap.get(byteBufferIndex);
+                lastLimit -= byteBuffer.limit() - startPositionMap.get(byteBufferIndex);
             }
             return byteBuffer.get(i - lastLimit + byteBuffer.remaining());
         } else {
-            ByteBuffer byteBuffer = this.byteBuffer;
             if (position == currentLimit) {
                 byteBuffer = byteBufferList.get(byteBufferIndex + 1);
             }
@@ -81,13 +75,13 @@ public class MultiByteBuffer {
         boolean increase = position > this.position;
         int length = increase ? position - this.position : this.position - position;
         ByteBuffer currentByteBuffer = byteBuffer;
-        while (length > 0) {
+        while (0 < length) {
             Integer currentStart = null;
             if (!increase) {
                 currentStart = startPositionMap.get(byteBufferIndex);
             }
             int temp = increase ? length - currentByteBuffer.remaining() : length - (currentByteBuffer.position() - currentStart);
-            if (temp > 0) {
+            if (0 < temp) {
                 if (increase) {
                     currentByteBuffer.position(currentByteBuffer.limit());
                     byteBufferIndex++;
@@ -125,7 +119,7 @@ public class MultiByteBuffer {
      * @return
      */
     public MultiByteBuffer put(ByteBuffer... byteBuffers) {
-        if (byteBufferList.isEmpty() && byteBuffers.length > 0) {
+        if (byteBufferList.isEmpty() && 0 < byteBuffers.length) {
             currentLimit = byteBuffers[0].limit();
             this.byteBuffer = byteBuffers[0];
         }
@@ -141,10 +135,10 @@ public class MultiByteBuffer {
      * @return
      */
     private ByteBuffer nextGetByteBuffer() {
-        if (position >= limit) {
-            throw new BufferUnderflowException();
-        }
-        if (position == currentLimit) {
+        if (position >= currentLimit) {
+            if (position >= limit) {
+                throw new BufferUnderflowException();
+            }
             byteBufferIndex++;
             byteBuffer = byteBufferList.get(byteBufferIndex);
             currentLimit = position + byteBuffer.remaining();
@@ -175,7 +169,7 @@ public class MultiByteBuffer {
      * @param size
      */
     private static void checkBounds(int off, int len, int size) {
-        if ((off | len | (off + len) | (size - (off + len))) < 0) {
+        if (0 > (off | len | (off + len) | (size - (off + len)))) {
             throw new IndexOutOfBoundsException();
         }
     }
@@ -197,7 +191,7 @@ public class MultiByteBuffer {
         }
         return this;
     }
-    
+
     public int size() {
         return byteBufferList.size();
     }
