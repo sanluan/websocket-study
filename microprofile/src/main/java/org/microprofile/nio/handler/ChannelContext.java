@@ -5,6 +5,8 @@ import java.io.IOException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 
+import org.microprofile.common.buffer.MultiByteBuffer;
+
 public class ChannelContext<T> implements Closeable {
     private SelectionKey key;
     private SocketChannel socketChannel;
@@ -12,6 +14,8 @@ public class ChannelContext<T> implements Closeable {
     private ThreadHandler<T> threadHandler;
     private boolean closed;
     private T attachment;
+    private MultiByteBuffer cachedBuffer;
+    private int payloadLength;
 
     public ChannelContext(SelectionKey key, ProtocolHandler<T> protocolHandler, SocketChannel socketChannel) {
         this.key = key;
@@ -81,4 +85,31 @@ public class ChannelContext<T> implements Closeable {
         this.attachment = attachment;
     }
 
+    /**
+     * @return
+     */
+    public MultiByteBuffer getCachedBuffer() {
+        return cachedBuffer;
+    }
+
+    /**
+     * @param cachedBuffer
+     */
+    public void setCachedBuffer(MultiByteBuffer cachedBuffer) {
+        this.cachedBuffer = cachedBuffer;
+    }
+
+    /**
+     * @return
+     */
+    public int getPayloadLength() {
+        return payloadLength;
+    }
+
+    /**
+     * @param payloadLength
+     */
+    public void setPayloadLength(int payloadLength) {
+        this.payloadLength = payloadLength;
+    }
 }

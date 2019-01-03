@@ -8,6 +8,7 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.microprofile.common.buffer.MultiByteBuffer;
+import org.microprofile.nio.handler.ChannelContext;
 import org.microprofile.websocket.handler.Message;
 import org.microprofile.websocket.handler.WebSocketFrame;
 
@@ -33,7 +34,8 @@ public class MessageUtils {
         return (0 < (opCode & 0x8));
     }
 
-    public static Message processMessage(MultiByteBuffer byteBuffer, WebSocketFrame webSocketFrame) throws IOException {
+    public static Message processMessage(MultiByteBuffer byteBuffer, ChannelContext<WebSocketFrame> channelContext)
+            throws IOException {
         if (2 <= byteBuffer.remaining()) {
             byte b = byteBuffer.get();
             boolean fin = 0 < (b & 0x80);
@@ -63,6 +65,7 @@ public class MessageUtils {
                 } else {
                     byteBuffer.get(array);
                 }
+                channelContext.setPayloadLength(0);
                 if (isControl(opCode)) {
                     if (fin && 125 >= payloadLen) {
                         return new Message(fin, rsv, opCode, array);
@@ -70,10 +73,13 @@ public class MessageUtils {
                         return new Message(fin, rsv, Message.OPCODE_CLOSE, array);
                     }
                 } else {
+                    if (!fin) {
+                        System.out.println(1);
+                    }
                     return new Message(fin, rsv, opCode, array);
                 }
             } else {
-                webSocketFrame.setPayloadLength(payloadLen);
+                channelContext.setPayloadLength(payloadLen);
                 byteBuffer.position(byteBuffer.position() - 2);
                 if (null != payloadLengthByte) {
                     byteBuffer.position(byteBuffer.position() - payloadLengthByte.length);

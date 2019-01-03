@@ -11,12 +11,14 @@ public class Message {
     private final int rsv;
     private final byte opCode;
     private final byte[] payload;
+    private final int size;
 
     public Message(boolean fin, int rsv, byte opCode, byte[] payload) {
         this.fin = fin;
         this.rsv = rsv;
         this.opCode = opCode;
         this.payload = payload;
+        this.size = payload.length;
     }
 
     /**
@@ -45,5 +47,12 @@ public class Message {
      */
     public byte[] getPayload() {
         return this.payload;
+    }
+
+    /**
+     * @return the size
+     */
+    public int getSize() {
+        return size;
     }
 }

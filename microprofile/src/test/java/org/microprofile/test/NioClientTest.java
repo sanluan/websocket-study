@@ -1,11 +1,11 @@
 package org.microprofile.test;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.Scanner;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.microprofile.common.buffer.MultiByteBuffer;
 import org.microprofile.nio.SocketClient;
 import org.microprofile.nio.handler.ChannelContext;
 import org.microprofile.nio.handler.ProtocolHandler;
@@ -50,11 +50,9 @@ class NioClientProtocolHandler implements ProtocolHandler<Object> {
     protected final Log log = LogFactory.getLog(getClass());
 
     @Override
-    public void read(ChannelContext<Object> channelContext, ByteBuffer byteBuffer) {
-        byteBuffer.flip();
+    public void read(ChannelContext<Object> channelContext, MultiByteBuffer byteBuffer) {
         byte[] dst = new byte[byteBuffer.limit()];
         byteBuffer.get(dst);
-        byteBuffer.clear();
         log.info("recive:" + new String(dst));
     }
 

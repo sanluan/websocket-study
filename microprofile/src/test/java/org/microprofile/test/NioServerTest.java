@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 
+import org.microprofile.common.buffer.MultiByteBuffer;
 import org.microprofile.nio.SocketServer;
 import org.microprofile.nio.handler.ChannelContext;
 import org.microprofile.nio.handler.ProtocolHandler;
@@ -15,18 +16,15 @@ public class NioServerTest {
         socketServer.listen();
         socketServer.close();
     }
-
 }
 
 class NioServerProtocolHandler implements ProtocolHandler<Object> {
 
     @Override
-    public void read(ChannelContext<Object> channelContext, ByteBuffer byteBuffer) throws IOException {
+    public void read(ChannelContext<Object> channelContext, MultiByteBuffer byteBuffer) throws IOException {
         SocketChannel client = channelContext.getSocketChannel();
-        byteBuffer.flip();
         byte[] dst = new byte[byteBuffer.limit()];
         byteBuffer.get(dst);
-        byteBuffer.clear();
         client.write(ByteBuffer.wrap(dst));
     }
 

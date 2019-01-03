@@ -3,12 +3,8 @@ package org.microprofile.websocket.handler;
 import java.util.LinkedList;
 import java.util.List;
 
-import org.microprofile.common.buffer.MultiByteBuffer;
-
 public class WebSocketFrame {
     private Session session;
-    private MultiByteBuffer cachedBuffer;
-    private int payloadLength;
     private List<byte[]> cachedMessageList;
     private int cachedMessageLength = 0;
     private byte cachedOpCode;
@@ -26,35 +22,6 @@ public class WebSocketFrame {
      */
     public void setSession(Session session) {
         this.session = session;
-    }
-
-    /**
-     * @return
-     */
-    public MultiByteBuffer getCachedBuffer() {
-        return cachedBuffer;
-    }
-
-    /**
-     * @param cachedBuffer
-     */
-    public void setCachedBuffer(MultiByteBuffer cachedBuffer) {
-        this.cachedBuffer = cachedBuffer;
-    }
-
-    /**
-     * @return the payloadLenngthByte
-     */
-    public int getPayloadLength() {
-        return payloadLength;
-    }
-
-    /**
-     * @param payloadLength
-     *            the payloadLength to set
-     */
-    public void setPayloadLength(int payloadLength) {
-        this.payloadLength = payloadLength;
     }
 
     /**

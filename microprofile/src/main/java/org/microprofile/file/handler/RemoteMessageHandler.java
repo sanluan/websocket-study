@@ -6,7 +6,6 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -373,14 +372,19 @@ public class RemoteMessageHandler implements MessageHandler {
     public void handle(byte[] payload, Session session) {
         byte header = payload[0];
         if (0 <= header && HEADER_MAX_EVENT >= header && HEADER_LENGTH < payload.length) {
+            log.info("文件消息\t" + header);
             handleEvent(header, payload);
         } else if (HEADER_FILE_CHECKSUM == header && !master) {
+            log.info("文件校验消息\t" + payload.length);
             handleFileChecksum(payload, session);
         } else if (HEADER_BLOCK_CHECKSUM == header && HEADER_LENGTH < payload.length) {
+            log.info("文件块校验消息\t" + payload.length);
             handleBlockChecksum(payload, session);
         } else if (HEADER_FILE_CHECKSUM_RESULT == header) {
+            log.info("文件校验结果\t" + header);
             handleFileChecksumResult(payload, session);
         } else if (HEADER_BLOCK_CHECKSUM_RESULT == header && HEADER_LENGTH < payload.length) {
+            log.info("文件块校验结果\t" + header);
             handleBlockChecksumResult(payload, session);
         }
     }
@@ -390,6 +394,8 @@ public class RemoteMessageHandler implements MessageHandler {
         sessionMap.put(session.getId(), session);
         log.info(session.getId() + "\t connected!");
         if (master) {
+            StringBuilder sb = new StringBuilder("Thread [Client ");
+            sb.append(session.getId()).append(" file sync task]");
             new Thread() {
                 public void run() {
                     try {
@@ -408,17 +414,16 @@ public class RemoteMessageHandler implements MessageHandler {
         log.info(session.getId() + "\t closed!");
     }
 
-    private List<String> send(Session session, byte[] data) {
-        List<String> failureList = null;
+    private void send(Session session, byte[] data) {
         if (null == session) {
             for (Session s : sessionMap.values()) {
                 try {
                     s.sendByte(data);
                 } catch (IOException e) {
-                    if (null == failureList) {
-                        failureList = new ArrayList<>();
+                    try {
+                        s.close();
+                    } catch (IOException e1) {
                     }
-                    failureList.add(s.getId());
                     log.error("can't send to " + s.getId());
                 }
             }
@@ -426,14 +431,13 @@ public class RemoteMessageHandler implements MessageHandler {
             try {
                 session.sendByte(data);
             } catch (IOException e) {
-                if (null == failureList) {
-                    failureList = new ArrayList<>();
+                try {
+                    session.close();
+                } catch (IOException e1) {
                 }
-                failureList.add(session.getId());
                 log.error("can't send to " + session.getId());
             }
         }
-        return failureList;
     }
 
     public void sendEvent(FileEvent event) {

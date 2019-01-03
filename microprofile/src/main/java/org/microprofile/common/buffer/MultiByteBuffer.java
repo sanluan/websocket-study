@@ -37,10 +37,13 @@ public class MultiByteBuffer {
             }
             return byteBuffer.get(i - currentLimit + byteBuffer.remaining());
         } else if (i < position) {
-            int lastLimit = this.currentLimit - byteBuffer.limit() + startPositionMap.get(byteBufferIndex);
+            Integer start = startPositionMap.get(byteBufferIndex);
+            int lastLimit = null == start ? this.currentLimit - byteBuffer.limit()
+                    : this.currentLimit - byteBuffer.limit() + start;
             while (i < lastLimit) {
                 byteBuffer = byteBufferList.get(--byteBufferIndex);
-                lastLimit -= byteBuffer.limit() - startPositionMap.get(byteBufferIndex);
+                start = startPositionMap.get(byteBufferIndex);
+                lastLimit -= null == start ? byteBuffer.limit() : byteBuffer.limit() - start;
             }
             return byteBuffer.get(i - lastLimit + byteBuffer.remaining());
         } else {
@@ -80,13 +83,15 @@ public class MultiByteBuffer {
             if (!increase) {
                 currentStart = startPositionMap.get(byteBufferIndex);
             }
-            int temp = increase ? length - currentByteBuffer.remaining() : length - (currentByteBuffer.position() - currentStart);
+            int temp = increase ? length - currentByteBuffer.remaining()
+                    : null == currentStart ? length - currentByteBuffer.position()
+                            : length - (currentByteBuffer.position() - currentStart);
             if (0 < temp) {
                 if (increase) {
                     currentByteBuffer.position(currentByteBuffer.limit());
                     byteBufferIndex++;
                 } else {
-                    currentByteBuffer.position(currentStart);
+                    currentByteBuffer.position(null == currentStart ? 0 : currentStart);
                     byteBufferIndex--;
                 }
                 byteBuffer = currentByteBuffer = byteBufferList.get(byteBufferIndex);
@@ -105,10 +110,12 @@ public class MultiByteBuffer {
      */
     public MultiByteBuffer put(ByteBuffer byteBuffer) {
         if (byteBufferList.isEmpty()) {
-            currentLimit = byteBuffer.limit();
+            currentLimit = byteBuffer.remaining();
             this.byteBuffer = byteBuffer;
         }
-        startPositionMap.put(byteBufferList.size(), byteBuffer.position());
+        if (0 < byteBuffer.position()) {
+            startPositionMap.put(byteBufferList.size(), byteBuffer.position());
+        }
         limit += byteBuffer.remaining();
         byteBufferList.add(byteBuffer);
         return this;
@@ -119,14 +126,8 @@ public class MultiByteBuffer {
      * @return
      */
     public MultiByteBuffer put(ByteBuffer... byteBuffers) {
-        if (byteBufferList.isEmpty() && 0 < byteBuffers.length) {
-            currentLimit = byteBuffers[0].limit();
-            this.byteBuffer = byteBuffers[0];
-        }
         for (ByteBuffer byteBuffer : byteBuffers) {
-            startPositionMap.put(byteBufferList.size(), byteBuffer.position());
-            limit += byteBuffer.remaining();
-            byteBufferList.add(byteBuffer);
+            put(byteBuffer);
         }
         return this;
     }
@@ -189,6 +190,16 @@ public class MultiByteBuffer {
         for (int i = offset; i < end; i++) {
             dst[i] = get();
         }
+        return this;
+    }
+
+    public MultiByteBuffer clear() {
+        position = 0;
+        limit = 0;
+        byteBufferIndex = 0;
+        currentLimit = 0;
+        byteBuffer = null;
+        byteBufferList.clear();
         return this;
     }
 

@@ -1,17 +1,16 @@
 package org.microprofile.test;
 
 import org.microprofile.file.handler.FileEventHandler;
-import org.microprofile.file.handler.LocalFileAdaptor;
 import org.microprofile.file.listener.FileListener;
 import org.microprofile.websocket.WebSocketClient;
 
-public class FileClientTest {
+public class FileClient2Test {
 
     public static void main(String[] args) {
         try {
 
-            FileEventHandler fileEventHandler = new FileEventHandler(
-                    new LocalFileAdaptor("D:/bbb/", FileListener.DEFULT_BLOCK_SIZE));
+            FileListener listener = new FileListener("D:/ccc/");
+            FileEventHandler fileEventHandler = new FileEventHandler(listener.getLocalFileAdaptor());
             WebSocketClient ws = new WebSocketClient("localhost", 1000, "/", fileEventHandler.getRemoteMessageHandler(false));
             ws.asyncListen();
             Thread.sleep(1000 * 1000);

@@ -31,23 +31,14 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
     }
 
     @Override
-    public void read(ChannelContext<WebSocketFrame> channelContext, ByteBuffer byteBuffer) throws IOException {
-        WebSocketFrame frame = channelContext.getAttachment();
-        if (null == frame) {
-            channelContext.setAttachment(frame = new WebSocketFrame());
+    public void read(ChannelContext<WebSocketFrame> channelContext, MultiByteBuffer multiByteBuffer) throws IOException {
+        WebSocketFrame webSocketFrame = channelContext.getAttachment();
+        if (null == webSocketFrame) {
+            channelContext.setAttachment(webSocketFrame = new WebSocketFrame());
         }
-        byteBuffer.flip();
         try {
-            MultiByteBuffer multiByteBuffer = frame.getCachedBuffer();
-            if (null == multiByteBuffer) {
-                multiByteBuffer = new MultiByteBuffer();
-            }
-            multiByteBuffer.put(byteBuffer);
-            if (frame.isInitialized()) {
-                if (frame.getPayloadLength() > multiByteBuffer.remaining()) {
-                    return;
-                }
-                Message message = MessageUtils.processMessage(multiByteBuffer, frame);
+            if (webSocketFrame.isInitialized()) {
+                Message message = MessageUtils.processMessage(multiByteBuffer, channelContext);
                 while (null != message) {
                     if (MessageUtils.isControl(message.getOpCode())) {
                         if (Message.OPCODE_CLOSE == message.getOpCode()) {
@@ -62,48 +53,38 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
                             return;
                         }
                     } else if (message.isFin()) {
-                        if (0 != frame.getCachedMessageLength() && Message.OPCODE_PART == message.getOpCode()) {
-                            ByteBuffer newByteBuffer = ByteBuffer.allocate(frame.getCachedMessageLength());
-                            for (byte[] payload : frame.getCachedMessageList()) {
+                        if (0 != webSocketFrame.getCachedMessageLength() && Message.OPCODE_PART == message.getOpCode()) {
+                            ByteBuffer newByteBuffer = ByteBuffer.allocate(webSocketFrame.getCachedMessageLength());
+                            for (byte[] payload : webSocketFrame.getCachedMessageList()) {
                                 newByteBuffer.put(payload);
                             }
-                            frame.clearCachedMessageList();
+                            webSocketFrame.clearCachedMessageList();
                             newByteBuffer.put(message.getPayload());
-                            message = new Message(message.isFin(), frame.getCachedOpCode(), message.getOpCode(),
+                            message = new Message(message.isFin(), webSocketFrame.getCachedOpCode(), message.getOpCode(),
                                     newByteBuffer.array());
                         }
                         if (Message.OPCODE_BYTE == message.getOpCode()) {
-                            handler.onMessage(message.getPayload(), frame.getSession());
+                            handler.onMessage(message.getPayload(), webSocketFrame.getSession());
                         } else if (Message.OPCODE_STRING == message.getOpCode()) {
-                            handler.onMessage(new String(message.getPayload(), Constants.DEFAULT_CHARSET), frame.getSession());
+                            handler.onMessage(new String(message.getPayload(), Constants.DEFAULT_CHARSET),
+                                    webSocketFrame.getSession());
                         } else {
                             channelContext.close();
                             return;
                         }
                     } else if (!message.isFin()) {
-                        if (0 != frame.getCachedMessageLength()) {
-                            frame.setCachedOpCode(message.getOpCode());
+                        if (0 != webSocketFrame.getCachedMessageLength()) {
+                            webSocketFrame.setCachedOpCode(message.getOpCode());
                         }
-                        frame.addCachedMessage(message.getPayload());
+                        webSocketFrame.addCachedMessage(message.getPayload());
                     } else {
                         channelContext.close();
                         return;
                     }
-                    message = MessageUtils.processMessage(multiByteBuffer, frame);
-                }
-                if (byteBuffer.hasRemaining()) {
-                    if (multiByteBuffer.size() > 1) {
-                        multiByteBuffer = new MultiByteBuffer();
-                        multiByteBuffer.put(byteBuffer);
-                    }
-                    frame.setCachedBuffer(multiByteBuffer);
-                } else {
-                    frame.setCachedBuffer(null);
-                    frame.setPayloadLength(0);
+                    message = MessageUtils.processMessage(multiByteBuffer, channelContext);
                 }
             } else {
                 if (!HttpProtocolUtils.isEnough(multiByteBuffer)) {
-                    frame.setCachedBuffer(multiByteBuffer);
                     if (multiByteBuffer.remaining() > maxHeaderLength) {
                         channelContext.close();
                     }
@@ -119,11 +100,10 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
                     channelContext.close();
                     return;
                 } else {
-                    frame.setSession(session);
-                    frame.setInitialized(true);
-                    handler.onOpen(frame.getSession());
+                    webSocketFrame.setSession(session);
+                    webSocketFrame.setInitialized(true);
+                    handler.onOpen(webSocketFrame.getSession());
                 }
-                frame.setCachedBuffer(null);
             }
         } catch (IOException e) {
             channelContext.close();
