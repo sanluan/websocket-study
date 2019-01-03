@@ -4,15 +4,12 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 import org.microprofile.common.buffer.MultiByteBuffer;
 
 public class ThreadHandler<T> implements Runnable, Closeable {
     private ChannelContext<T> channelContext;
     private ConcurrentLinkedQueue<ByteBuffer> byteBufferQueue = new ConcurrentLinkedQueue<>();
-    private Lock lock = new ReentrantLock();
     private boolean running;
     private boolean closed;
 
@@ -26,22 +23,28 @@ public class ThreadHandler<T> implements Runnable, Closeable {
 
     @Override
     public void run() {
-        setRunning(true);
+        this.running = true;
         ByteBuffer byteBuffer = byteBufferQueue.poll();
         while (null != byteBuffer && !closed) {
             ProtocolHandler<T> protocolHandler = channelContext.getProtocolHandler();
+            MultiByteBuffer multiByteBuffer = channelContext.getCachedBuffer();
+            if (null == multiByteBuffer) {
+                multiByteBuffer = new MultiByteBuffer();
+                channelContext.setCachedBuffer(multiByteBuffer);
+            }
+            byteBuffer.flip();
+            multiByteBuffer.put(byteBuffer);
             try {
-                MultiByteBuffer multiByteBuffer = channelContext.getCachedBuffer();
-                if (null == multiByteBuffer) {
-                    multiByteBuffer = new MultiByteBuffer();
-                    channelContext.setCachedBuffer(multiByteBuffer);
-                }
-                byteBuffer.flip();
-                multiByteBuffer.put(byteBuffer);
-                if (channelContext.getPayloadLength() <= multiByteBuffer.remaining()) {
+                int payloadLength = channelContext.getPayloadLength();
+                if (payloadLength <= multiByteBuffer.remaining()) {
+                    long position = multiByteBuffer.position();
+                    System.out.println(
+                            position + "start \t" + multiByteBuffer.remaining() + "\t" + channelContext.getPayloadLength());
                     protocolHandler.read(channelContext, multiByteBuffer);
+                    System.out.println(position + "end \t" + multiByteBuffer.position() + "\t" + byteBuffer.position() + "\t"
+                            + channelContext.getPayloadLength());
                     if (multiByteBuffer.hasRemaining()) {
-                        if (multiByteBuffer.size() > 1) {
+                        if (0 < payloadLength && 0 < multiByteBuffer.size()) {
                             multiByteBuffer.clear().put(byteBuffer);
                         }
                     } else {
@@ -56,26 +59,14 @@ public class ThreadHandler<T> implements Runnable, Closeable {
             }
             byteBuffer = byteBufferQueue.poll();
         }
-        setRunning(false);
+        this.running = false;
     }
 
     /**
      * @return the running
      */
     public boolean isRunning() {
-        lock.lock();
-        boolean result = running;
-        lock.unlock();
-        return result;
-    }
-
-    /**
-     * @param running
-     */
-    private void setRunning(boolean running) {
-        lock.lock();
-        this.running = running;
-        lock.unlock();
+        return running;
     }
 
     @Override

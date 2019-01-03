@@ -73,16 +73,15 @@ public class MessageUtils {
                         return new Message(fin, rsv, Message.OPCODE_CLOSE, array);
                     }
                 } else {
-                    if (!fin) {
-                        System.out.println(1);
-                    }
                     return new Message(fin, rsv, opCode, array);
                 }
             } else {
-                channelContext.setPayloadLength(payloadLen);
-                byteBuffer.position(byteBuffer.position() - 2);
-                if (null != payloadLengthByte) {
-                    byteBuffer.position(byteBuffer.position() - payloadLengthByte.length);
+                if (null == payloadLengthByte) {
+                    channelContext.setPayloadLength(payloadLen + 2);
+                    byteBuffer.position(byteBuffer.position() - 2);
+                } else {
+                    channelContext.setPayloadLength(payloadLen + payloadLengthByte.length + 2);
+                    byteBuffer.position(byteBuffer.position() - 2 - payloadLengthByte.length);
                 }
             }
         }

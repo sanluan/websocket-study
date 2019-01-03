@@ -19,13 +19,26 @@ public class NioServerTest {
 }
 
 class NioServerProtocolHandler implements ProtocolHandler<Object> {
+    int last = 0;
+    int count = 0;
 
     @Override
     public void read(ChannelContext<Object> channelContext, MultiByteBuffer byteBuffer) throws IOException {
-        SocketChannel client = channelContext.getSocketChannel();
         byte[] dst = new byte[byteBuffer.limit()];
         byteBuffer.get(dst);
-        client.write(ByteBuffer.wrap(dst));
+        for (int i = 0; i < byteBuffer.limit(); i++) {
+            if (last != dst[i]) {
+                System.out.println(1);
+            }
+            last++;
+            count++;
+            if (last == 126) {
+                last = 0;
+            }
+            if (count == 1000000) {
+                last = 0;
+            }
+        }
     }
 
     @Override

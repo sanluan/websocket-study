@@ -109,7 +109,7 @@ public class MultiByteBuffer {
      * @return
      */
     public MultiByteBuffer put(ByteBuffer byteBuffer) {
-        if (byteBufferList.isEmpty()) {
+        if (null == this.byteBuffer) {
             currentLimit = byteBuffer.remaining();
             this.byteBuffer = byteBuffer;
         }
@@ -146,7 +146,6 @@ public class MultiByteBuffer {
         }
         position++;
         return byteBuffer;
-
     }
 
     /**
@@ -200,6 +199,7 @@ public class MultiByteBuffer {
         currentLimit = 0;
         byteBuffer = null;
         byteBufferList.clear();
+        startPositionMap.clear();
         return this;
     }
 

@@ -1,6 +1,7 @@
 package org.microprofile.test;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.Scanner;
 
 import org.apache.commons.logging.Log;
@@ -17,15 +18,12 @@ public class NioClientTest {
         SocketClient socketClient = new SocketClient("127.0.0.1", 1000, null, new NioClientProtocolHandler());
         new NioClientThread(socketClient).start();
         log.info("please input you message,quit to exit");
-        Scanner in = new Scanner(System.in);
-        while (true) {
-            String message = in.nextLine();
-            if (message.equals("quit")) {
-                in.close();
-                socketClient.close();
-                break;
+        for (int i = 0; i < 100; i++) {
+            byte[] randBytes = new byte[1000000];
+            for (int j = 0; j < 1000000; j++) {
+                randBytes[j] = (byte) (j % 126);
             }
-            socketClient.sendMessage(message);
+            socketClient.sendMessage(randBytes);
         }
     }
 
