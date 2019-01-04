@@ -51,8 +51,14 @@ public class MessageUtils {
                 } else {
                     payloadLengthByte = new byte[8];
                 }
-                byteBuffer.get(payloadLengthByte);
-                payloadLen = byteArrayToInt(payloadLengthByte);
+                if (payloadLengthByte.length <= byteBuffer.remaining()) {
+                    byteBuffer.get(payloadLengthByte);
+                    payloadLen = byteArrayToInt(payloadLengthByte);
+                } else {
+                    channelContext.setPayloadLength(payloadLengthByte.length + 2);
+                    byteBuffer.reset();
+                    return null;
+                }
             }
             if (hasMask && payloadLen + 4 <= byteBuffer.remaining() || payloadLen <= byteBuffer.remaining()) {
                 byte[] array = new byte[payloadLen];
