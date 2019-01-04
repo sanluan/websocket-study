@@ -4,12 +4,11 @@ import org.microprofile.file.handler.FileEventHandler;
 import org.microprofile.file.listener.FileListener;
 import org.microprofile.websocket.WebSocketClient;
 
-public class FileClient2Test {
+public class FileClientTest {
 
     public static void main(String[] args) {
         try {
-
-            FileListener listener = new FileListener("D:/ccc/");
+            FileListener listener = new FileListener("D:/bbb/");
             FileEventHandler fileEventHandler = new FileEventHandler(listener.getLocalFileAdaptor());
             WebSocketClient ws = new WebSocketClient("localhost", 1000, "/", fileEventHandler.getRemoteMessageHandler(false));
             ws.asyncListen();

@@ -9,16 +9,16 @@ public class FileServerTest {
     public static void main(String[] args) {
         try {
 
-            FileListener listener1 = new FileListener("D:/aaa/");
-            FileEventHandler fileEventHandler1 = new FileEventHandler(listener1.getLocalFileAdaptor());
-            WebSocketServer wss = new WebSocketServer(1000, 1, fileEventHandler1.getRemoteMessageHandler(true));
+            FileListener listener = new FileListener("D:/aaa/");
+            FileEventHandler fileEventHandler = new FileEventHandler(listener.getLocalFileAdaptor());
+            WebSocketServer wss = new WebSocketServer(1000, 1, fileEventHandler.getRemoteMessageHandler(true));
             wss.asyncListen();
-            listener1.addEventHandler(fileEventHandler1);
-            listener1.start();
+            listener.addEventHandler(fileEventHandler);
+            listener.start();
 
             Thread.sleep(1000 * 1000);
             wss.close();
-            listener1.stop();
+            listener.stop();
         } catch (Exception e) {
             e.printStackTrace();
         }

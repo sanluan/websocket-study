@@ -15,12 +15,11 @@ import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.List;
 
 import org.apache.commons.io.FileUtils;
 import org.microprofile.common.utils.EncodeUtils;
 import org.microprofile.file.message.FileChecksum;
+import org.microprofile.websocket.handler.Session;
 
 public class LocalFileAdaptor {
 
@@ -36,16 +35,14 @@ public class LocalFileAdaptor {
     }
 
     /**
-     * @return
+     * @param session
+     * @param remoteMessageHandler
      */
-    public List<FileChecksum> getFileChecksumList() {
-        List<FileChecksum> result = new LinkedList<>();
+    public void fileChecksum(Session session, RemoteMessageHandler remoteMessageHandler) {
         try {
-            Files.walkFileTree(Paths.get(basePath), new ChecksumFilesVisitor(result, this));
+            Files.walkFileTree(Paths.get(basePath), new ChecksumFilesVisitor(remoteMessageHandler, session, this));
         } catch (IOException e) {
-            e.printStackTrace();
         }
-        return result;
     }
 
     /**
@@ -193,11 +190,14 @@ public class LocalFileAdaptor {
 
     private static class ChecksumFilesVisitor extends SimpleFileVisitor<Path> {
 
-        private List<FileChecksum> result;
+        private RemoteMessageHandler remoteMessageHandler;
+        private Session session;
         private LocalFileAdaptor localFileAdaptor;
 
-        public ChecksumFilesVisitor(List<FileChecksum> result, LocalFileAdaptor localFileAdaptor) {
-            this.result = result;
+        public ChecksumFilesVisitor(RemoteMessageHandler remoteMessageHandler, Session session,
+                LocalFileAdaptor localFileAdaptor) {
+            this.remoteMessageHandler = remoteMessageHandler;
+            this.session = session;
             this.localFileAdaptor = localFileAdaptor;
         }
 
@@ -207,7 +207,7 @@ public class LocalFileAdaptor {
                 File file = dir.toFile();
                 if (!localFileAdaptor.isRootDir(file)) {
                     FileChecksum fileChecksum = new FileChecksum(localFileAdaptor.getRelativeFilePath(file), true, attrs.size());
-                    result.add(fileChecksum);
+                    remoteMessageHandler.sendFileChecksum(session, fileChecksum);
                 }
                 return FileVisitResult.CONTINUE;
             } else {
@@ -226,15 +226,13 @@ public class LocalFileAdaptor {
                         byte[] checksum = EncodeUtils.md2(byteBuffer);
                         if (null != checksum) {
                             fileChecksum.setChecksum(checksum);
-                            result.add(fileChecksum);
+                            remoteMessageHandler.sendFileChecksum(session, fileChecksum);
                         }
                     } catch (FileNotFoundException e) {
-                        e.printStackTrace();
                     } catch (Exception e) {
-                        e.printStackTrace();
                     }
                 } else {
-                    result.add(fileChecksum);
+                    remoteMessageHandler.sendFileChecksum(session, fileChecksum);
                 }
                 return FileVisitResult.CONTINUE;
             } else {

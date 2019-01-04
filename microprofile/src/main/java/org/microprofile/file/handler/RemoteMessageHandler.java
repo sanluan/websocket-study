@@ -141,53 +141,51 @@ public class RemoteMessageHandler implements MessageHandler {
 
     private void handleFileChecksum(byte[] payload, Session session) {
         try {
-            List<FileChecksum> fileChecksumList = Constants.objectMapper.readValue(payload, 1, payload.length - 1,
-                    new TypeReference<List<FileChecksum>>() {
-                    });
-            if (null != fileChecksumList) {
-                List<FileChecksumResult> result = new LinkedList<>();
-                for (FileChecksum fileChecksum : fileChecksumList) {
-                    String filePath = fileChecksum.getFilePath();
-                    File file = localFileAdaptor.getFile(filePath);
-                    if (fileChecksum.isDirectory()) {
-                        if (!file.exists()) {
-                            long fileSize = localFileAdaptor.createDirectory(filePath);
-                            eventHandler.cache(new FileEvent(EventType.DIRECTORY_CREATE, filePath, fileSize));
-                        }
-                    } else {
-                        if (file.exists() && !file.isDirectory()) {
-                            if (0 < fileChecksum.getFileSize()) {
-                                if (fileChecksum.getFileSize() != file.length()) {
-                                    result.add(new FileChecksumResult(filePath, true));
-                                } else {
-                                    try {
-                                        if (!localFileAdaptor.verifyFile(file, fileChecksum.getChecksum())) {
-                                            result.add(new FileChecksumResult(filePath, true));
-                                        }
-                                    } catch (FileNotFoundException e) {
-                                    } catch (IOException e) {
+            FileChecksum fileChecksum = Constants.objectMapper.readValue(payload, 1, payload.length - 1, FileChecksum.class);
+            if (null != fileChecksum) {
+                FileChecksumResult result = null;
+                String filePath = fileChecksum.getFilePath();
+                File file = localFileAdaptor.getFile(filePath);
+                if (fileChecksum.isDirectory()) {
+                    if (!file.exists()) {
+                        long fileSize = localFileAdaptor.createDirectory(filePath);
+                        eventHandler.cache(new FileEvent(EventType.DIRECTORY_CREATE, filePath, fileSize));
+                    }
+                } else {
+                    if (file.exists() && !file.isDirectory()) {
+                        if (0 < fileChecksum.getFileSize()) {
+                            if (fileChecksum.getFileSize() != file.length()) {
+                                result = new FileChecksumResult(filePath, true);
+                            } else {
+                                try {
+                                    if (!localFileAdaptor.verifyFile(file, fileChecksum.getChecksum())) {
+                                        result = new FileChecksumResult(filePath, true);
                                     }
-                                }
-                            } else if (0 == fileChecksum.getFileSize() && 0 < file.length()) {
-                                try (RandomAccessFile raf = new RandomAccessFile(file, "rw")) {
-                                    raf.setLength(0);
+                                } catch (FileNotFoundException e) {
+                                } catch (IOException e) {
                                 }
                             }
-                        } else if (!file.exists() && 0 == fileChecksum.getFileSize()) {
-                            file.createNewFile();
-                            eventHandler.cache(new FileEvent(EventType.FILE_CREATE, filePath, 0));
-                        } else {
-                            result.add(new FileChecksumResult(filePath, false));
+                        } else if (0 == fileChecksum.getFileSize() && 0 < file.length()) {
+                            try (RandomAccessFile raf = new RandomAccessFile(file, "rw")) {
+                                raf.setLength(0);
+                            }
                         }
+                    } else if (!file.exists() && 0 == fileChecksum.getFileSize()) {
+                        file.createNewFile();
+                        eventHandler.cache(new FileEvent(EventType.FILE_CREATE, filePath, 0));
+                    } else {
+                        result = new FileChecksumResult(filePath, false);
                     }
                 }
-                if (!result.isEmpty()) {
-                    sendFileChecksumResultList(session, result);
+                if (null != result) {
+                    sendFileChecksumResult(session, result);
                 } else {
-                    log.info("all files are synchronized!");
+                    log.info(fileChecksum.getFilePath() + " are synchronized!");
                 }
             }
-        } catch (IOException e) {
+        } catch (
+
+        IOException e) {
             e.printStackTrace();
         }
     }
@@ -293,74 +291,71 @@ public class RemoteMessageHandler implements MessageHandler {
 
     private void handleFileChecksumResult(byte[] payload, Session session) {
         try {
-            List<FileChecksumResult> fileChecksumResultList = Constants.objectMapper.readValue(payload, 1, payload.length - 1,
-                    new TypeReference<List<FileChecksumResult>>() {
-                    });
-            if (null != fileChecksumResultList) {
-                for (FileChecksumResult fileChecksumResult : fileChecksumResultList) {
-                    String filePath = fileChecksumResult.getFilePath();
-                    File file = localFileAdaptor.getFile(filePath);
-                    if (file.exists() && !file.isDirectory()) {
-                        int blockSize = localFileAdaptor.getBlockSize();
-                        long fileSize = file.length();
-                        if (fileChecksumResult.isExists()) {
-                            if (blockSize > fileSize) {
-                                try {
-                                    sendBlock(session, HEADER_FILE_MODIFY, filePath, fileSize, -1, 0,
-                                            FileUtils.readFileToByteArray(file));
-                                } catch (IOException e) {
-                                }
-                            } else {
-                                List<BlockChecksum> blockChecksumList = new LinkedList<>();
-                                int blocks = (int) (fileSize / blockSize);
-                                for (int i = 0; i <= blocks; i++) {
-                                    try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
-                                        FileChannel channel = raf.getChannel();
-                                        if (i == blocks) {
-                                            int lastBlockSize = (int) (fileSize % blockSize);
-                                            if (0 != lastBlockSize) {
-                                                MappedByteBuffer byteBuffer = channel.map(FileChannel.MapMode.READ_ONLY,
-                                                        i * blockSize, lastBlockSize);
-                                                blockChecksumList.add(new BlockChecksum(i, EncodeUtils.md2(byteBuffer)));
-                                            }
-                                        } else {
-                                            MappedByteBuffer byteBuffer = channel.map(FileChannel.MapMode.READ_ONLY,
-                                                    i * blockSize, blockSize);
-                                            blockChecksumList.add(new BlockChecksum(i, EncodeUtils.md2(byteBuffer)));
-                                        }
-                                    } catch (FileNotFoundException e) {
-                                        blockChecksumList.clear();
-                                    } catch (IOException e) {
-                                        e.printStackTrace();
-                                    }
-                                }
-                                if (!blockChecksumList.isEmpty()) {
-                                    sendBlockchecksumList(session, filePath, fileSize, blockSize, blockChecksumList);
-                                }
+            FileChecksumResult fileChecksumResult = Constants.objectMapper.readValue(payload, 1, payload.length - 1,
+                    FileChecksumResult.class);
+            if (null != fileChecksumResult) {
+                String filePath = fileChecksumResult.getFilePath();
+                File file = localFileAdaptor.getFile(filePath);
+                if (file.exists() && !file.isDirectory()) {
+                    int blockSize = localFileAdaptor.getBlockSize();
+                    long fileSize = file.length();
+                    if (fileChecksumResult.isExists()) {
+                        if (blockSize > fileSize) {
+                            try {
+                                sendBlock(session, HEADER_FILE_MODIFY, filePath, fileSize, -1, 0,
+                                        FileUtils.readFileToByteArray(file));
+                            } catch (IOException e) {
                             }
                         } else {
-                            int blocks = (int) (file.length() / blockSize);
-                            byte[] data = new byte[blockSize];
-                            try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
-                                for (int i = 0; i <= blocks; i++) {
+                            List<BlockChecksum> blockChecksumList = new LinkedList<>();
+                            int blocks = (int) (fileSize / blockSize);
+                            for (int i = 0; i <= blocks; i++) {
+                                try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
+                                    FileChannel channel = raf.getChannel();
                                     if (i == blocks) {
-                                        int lastBlockSize = (int) (file.length() % blockSize);
+                                        int lastBlockSize = (int) (fileSize % blockSize);
                                         if (0 != lastBlockSize) {
-                                            byte[] lastBlock = new byte[lastBlockSize];
-                                            raf.read(lastBlock);
-                                            sendBlock(session, HEADER_FILE_CREATE, filePath, fileSize, blockSize, i, lastBlock);
+                                            MappedByteBuffer byteBuffer = channel.map(FileChannel.MapMode.READ_ONLY,
+                                                    i * blockSize, lastBlockSize);
+                                            blockChecksumList.add(new BlockChecksum(i, EncodeUtils.md2(byteBuffer)));
                                         }
                                     } else {
-                                        raf.seek(i * blockSize);
-                                        raf.read(data);
-                                        sendBlock(session, HEADER_FILE_CREATE, filePath, fileSize, blockSize, i, data);
+                                        MappedByteBuffer byteBuffer = channel.map(FileChannel.MapMode.READ_ONLY, i * blockSize,
+                                                blockSize);
+                                        blockChecksumList.add(new BlockChecksum(i, EncodeUtils.md2(byteBuffer)));
                                     }
+                                } catch (FileNotFoundException e) {
+                                    blockChecksumList.clear();
+                                } catch (IOException e) {
+                                    e.printStackTrace();
                                 }
-                            } catch (FileNotFoundException e) {
-                                e.printStackTrace();
-                            } catch (IOException e) {
-                                e.printStackTrace();
                             }
+                            if (!blockChecksumList.isEmpty()) {
+                                sendBlockchecksumList(session, filePath, fileSize, blockSize, blockChecksumList);
+                            }
+                        }
+                    } else {
+                        int blocks = (int) (file.length() / blockSize);
+                        byte[] data = new byte[blockSize];
+                        try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
+                            for (int i = 0; i <= blocks; i++) {
+                                if (i == blocks) {
+                                    int lastBlockSize = (int) (file.length() % blockSize);
+                                    if (0 != lastBlockSize) {
+                                        byte[] lastBlock = new byte[lastBlockSize];
+                                        raf.read(lastBlock);
+                                        sendBlock(session, HEADER_FILE_CREATE, filePath, fileSize, blockSize, i, lastBlock);
+                                    }
+                                } else {
+                                    raf.seek(i * blockSize);
+                                    raf.read(data);
+                                    sendBlock(session, HEADER_FILE_CREATE, filePath, fileSize, blockSize, i, data);
+                                }
+                            }
+                        } catch (FileNotFoundException e) {
+                            e.printStackTrace();
+                        } catch (IOException e) {
+                            e.printStackTrace();
                         }
                     }
                 }
@@ -393,6 +388,7 @@ public class RemoteMessageHandler implements MessageHandler {
     public void onOpen(Session session) throws IOException {
         sessionMap.put(session.getId(), session);
         log.info(session.getId() + "\t connected!");
+        RemoteMessageHandler remoteMessageHandler = this;
         if (master) {
             StringBuilder sb = new StringBuilder("Thread [Client ");
             sb.append(session.getId()).append(" file sync task]");
@@ -400,7 +396,7 @@ public class RemoteMessageHandler implements MessageHandler {
                 public void run() {
                     try {
                         Thread.sleep(1000 * 2);
-                        sendFileChecksumList(session, localFileAdaptor.getFileChecksumList());
+                        localFileAdaptor.fileChecksum(session, remoteMessageHandler);
                     } catch (InterruptedException e) {
                     }
                 }
@@ -503,25 +499,24 @@ public class RemoteMessageHandler implements MessageHandler {
         send(session, payload);
     }
 
-    private void sendFileChecksumList(Session session, List<FileChecksum> fileList) {
+    public void sendFileChecksum(Session session, FileChecksum checkSum) {
         try {
-            sendFileList(session, HEADER_FILE_CHECKSUM, fileList);
-            log.info("sent file checksum list:" + fileList.size());
-        } catch (JsonProcessingException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void sendFileChecksumResultList(Session session, List<FileChecksumResult> fileList) {
-        try {
-            sendFileList(session, HEADER_FILE_CHECKSUM_RESULT, fileList);
-            log.info("sent file checksum result list:" + fileList.size());
+            sendFile(session, HEADER_FILE_CHECKSUM, checkSum);
+            log.info("sent file checksum list:" + checkSum.getFilePath());
         } catch (JsonProcessingException e) {
         }
     }
 
-    private void sendFileList(Session session, byte code, List<?> fileList) throws JsonProcessingException {
-        byte[] data = Constants.objectMapper.writeValueAsBytes(fileList);
+    public void sendFileChecksumResult(Session session, FileChecksumResult result) {
+        try {
+            sendFile(session, HEADER_FILE_CHECKSUM_RESULT, result);
+            log.info("sent file checksum result:" + result.getFilePath());
+        } catch (JsonProcessingException e) {
+        }
+    }
+
+    private void sendFile(Session session, byte code, Object object) throws JsonProcessingException {
+        byte[] data = Constants.objectMapper.writeValueAsBytes(object);
         byte[] payload = new byte[1 + data.length];
         payload[0] = code;
         System.arraycopy(data, 0, payload, 1, data.length);
