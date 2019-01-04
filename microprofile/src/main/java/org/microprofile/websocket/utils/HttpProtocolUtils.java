@@ -2,8 +2,6 @@ package org.microprofile.websocket.utils;
 
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
-import java.nio.ByteBuffer;
-import java.nio.channels.SocketChannel;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
@@ -11,7 +9,9 @@ import java.util.Map;
 
 import org.microprofile.common.buffer.MultiByteBuffer;
 import org.microprofile.common.utils.EncodeUtils;
+import org.microprofile.nio.handler.ChannelContext;
 import org.microprofile.websocket.handler.Session;
+import org.microprofile.websocket.handler.WebSocketFrame;
 
 public class HttpProtocolUtils {
     private static final String HTTP_ERROR = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/html\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n";
@@ -29,7 +29,8 @@ public class HttpProtocolUtils {
         }
     }
 
-    public static Session processServerProtocol(SocketChannel client, MultiByteBuffer multiByteBuffer) throws IOException {
+    public static Session processServerProtocol(ChannelContext<WebSocketFrame> channelContext, MultiByteBuffer multiByteBuffer)
+            throws IOException {
         Session session = null;
         String url = readFirstLine(multiByteBuffer);
         Map<String, String> headers = getHeaders(multiByteBuffer);
@@ -38,23 +39,24 @@ public class HttpProtocolUtils {
             byte[] key_sha1 = sha1(secKey + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
             StringBuilder sb = new StringBuilder(HTTP_WEBSOCKET_RESPONSE);
             sb.append(EncodeUtils.base64Encode(key_sha1)).append("\r\n\r\n");
-            session = new Session(client);
+            session = new Session(channelContext);
             session.setHeaders(headers);
             session.setUrl(url);
-            send(client, sb.toString());
+            channelContext.write(sb.toString());
         } else {
-            send(client, HTTP_ERROR);
+            channelContext.write(HTTP_ERROR);
         }
         return session;
     }
 
-    public static Session processClientProtocol(SocketChannel server, MultiByteBuffer multiByteBuffer) throws IOException {
+    public static Session processClientProtocol(ChannelContext<WebSocketFrame> channelContext, MultiByteBuffer multiByteBuffer)
+            throws IOException {
         Session session = null;
         readFirstLine(multiByteBuffer);
         Map<String, String> headers = getHeaders(multiByteBuffer);
         String secKey = headers.get("Sec-WebSocket-Accept");
         if (null != secKey) {
-            session = new Session(server);
+            session = new Session(channelContext);
             session.setHeaders(headers);
             session.setUrl(null);
         }
@@ -103,21 +105,12 @@ public class HttpProtocolUtils {
         return stringBuilder.toString();
     }
 
-    public static void sendHandshake(SocketChannel server, String host, int port, String url) throws IOException {
+    public static String getHandshake(String host, int port, String url) {
         StringBuilder sb = new StringBuilder("GET ");
         sb.append(url).append(" HTTP/1.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nHost: ");
         sb.append(host).append(":").append(port).append(
                 "\r\nOrigin: null\r\nSec-WebSocket-Key: SN3OSin4/Zok8kmgrD8qxQ==\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Extensions: x-webkit-deflate-frame\r\n\r\n");
-        send(server, sb.toString());
-    }
-
-    private static void send(SocketChannel client, String message) throws IOException {
-        send(client, message.getBytes());
-    }
-
-    private static void send(SocketChannel client, byte[] message) throws IOException {
-        ByteBuffer byteBuffer = ByteBuffer.wrap(message);
-        client.write(byteBuffer);
+        return sb.toString();
     }
 
     private static byte[] sha1(String text) {

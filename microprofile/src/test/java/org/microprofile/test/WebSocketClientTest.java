@@ -1,7 +1,6 @@
 package org.microprofile.test;
 
 import java.io.IOException;
-import java.util.Scanner;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -17,17 +16,12 @@ public class WebSocketClientTest {
             WebSocketClient ws = new WebSocketClient("localhost", 1000, "/", new ClientMessageHandler());
             log.info("启动。。。");
             new WebSocketClientThread(ws).start();
-            log.info("please input you message,quit to exit");
-            Scanner in = new Scanner(System.in);
-            while (true) {
-                String message = in.nextLine();
-                if (message.equals("quit")) {
-                    in.close();
-                    ws.close();
-                    break;
-                }
-                ws.sendString(message);
+            Thread.sleep(1000);
+            byte[] randBytes = new byte[100];
+            for (int j = 0; j < 100; j++) {
+                randBytes[j] = (byte) (j % 126);
             }
+            ws.sendByte(randBytes);
         } catch (IOException e) {
             e.printStackTrace();
         }

@@ -92,9 +92,9 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
                 }
                 Session session;
                 if (server) {
-                    session = HttpProtocolUtils.processServerProtocol(channelContext.getSocketChannel(), multiByteBuffer);
+                    session = HttpProtocolUtils.processServerProtocol(channelContext, multiByteBuffer);
                 } else {
-                    session = HttpProtocolUtils.processClientProtocol(channelContext.getSocketChannel(), multiByteBuffer);
+                    session = HttpProtocolUtils.processClientProtocol(channelContext, multiByteBuffer);
                 }
                 if (null == session) {
                     channelContext.close();

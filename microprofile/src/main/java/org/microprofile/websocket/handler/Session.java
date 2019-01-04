@@ -2,22 +2,22 @@ package org.microprofile.websocket.handler;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.SocketChannel;
 import java.util.Map;
 import java.util.UUID;
 
 import org.microprofile.file.constant.Constants;
+import org.microprofile.nio.handler.ChannelContext;
 import org.microprofile.websocket.utils.MessageUtils;
 
 public class Session {
     private String id;
-    private SocketChannel socketChannel;
+    private ChannelContext<WebSocketFrame> channelContext;
     private Map<String, String> headers;
     private String url;
 
-    public Session(SocketChannel socketChannel) {
+    public Session(ChannelContext<WebSocketFrame> channelContext) {
         this.id = UUID.randomUUID().toString();
-        this.socketChannel = socketChannel;
+        this.channelContext = channelContext;
     }
 
     /**
@@ -35,7 +35,7 @@ public class Session {
     }
 
     /**
-     * @param key 
+     * @param key
      * @return the header value
      */
     public String getHeader(String key) {
@@ -54,7 +54,7 @@ public class Session {
      * @return
      */
     public boolean isOpen() {
-        return socketChannel.isOpen();
+        return channelContext.isOpen();
     }
 
     /**
@@ -78,7 +78,7 @@ public class Session {
      * @throws IOException
      */
     public void send(Message message) throws IOException {
-        socketChannel.write(MessageUtils.wrapMessage(message, false, true));
+        channelContext.write(MessageUtils.wrapMessage(message, false, true));
     }
 
     /**
@@ -86,7 +86,7 @@ public class Session {
      * @throws IOException
      */
     public void send(ByteBuffer byteBuffer) throws IOException {
-        socketChannel.write(byteBuffer);
+        channelContext.write(byteBuffer);
     }
 
     /**
@@ -97,7 +97,8 @@ public class Session {
     }
 
     /**
-     * @param url the url to set
+     * @param url
+     *            the url to set
      */
     public void setUrl(String url) {
         this.url = url;
@@ -107,6 +108,6 @@ public class Session {
      * @throws IOException
      */
     public void close() throws IOException {
-        socketChannel.close();
+        channelContext.close();
     }
 }

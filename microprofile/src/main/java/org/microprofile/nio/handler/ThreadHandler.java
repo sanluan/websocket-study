@@ -37,12 +37,7 @@ public class ThreadHandler<T> implements Runnable, Closeable {
             try {
                 int payloadLength = channelContext.getPayloadLength();
                 if (payloadLength <= multiByteBuffer.remaining()) {
-                    long position = multiByteBuffer.position();
-                    System.out.println(
-                            position + "start \t" + multiByteBuffer.remaining() + "\t" + channelContext.getPayloadLength());
                     protocolHandler.read(channelContext, multiByteBuffer);
-                    System.out.println(position + "end \t" + multiByteBuffer.position() + "\t" + byteBuffer.position() + "\t"
-                            + channelContext.getPayloadLength());
                     if (multiByteBuffer.hasRemaining()) {
                         if (0 < payloadLength && 0 < multiByteBuffer.size()) {
                             multiByteBuffer.clear().put(byteBuffer);

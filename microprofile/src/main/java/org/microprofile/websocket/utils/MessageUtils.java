@@ -37,7 +37,7 @@ public class MessageUtils {
     public static Message processMessage(MultiByteBuffer byteBuffer, ChannelContext<WebSocketFrame> channelContext)
             throws IOException {
         if (2 <= byteBuffer.remaining()) {
-            byte b = byteBuffer.get();
+            byte b = byteBuffer.mark().get();
             boolean fin = 0 < (b & 0x80);
             int rsv = ((b & 0x70) >>> 4);
             byte opCode = (byte) (b & 0xF);
@@ -78,11 +78,10 @@ public class MessageUtils {
             } else {
                 if (null == payloadLengthByte) {
                     channelContext.setPayloadLength(payloadLen + 2);
-                    byteBuffer.position(byteBuffer.position() - 2);
                 } else {
                     channelContext.setPayloadLength(payloadLen + payloadLengthByte.length + 2);
-                    byteBuffer.position(byteBuffer.position() - 2 - payloadLengthByte.length);
                 }
+                byteBuffer.reset();
             }
         }
         return null;

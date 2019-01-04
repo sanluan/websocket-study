@@ -1,8 +1,6 @@
 package org.microprofile.test;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.SocketChannel;
 
 import org.microprofile.common.buffer.MultiByteBuffer;
 import org.microprofile.nio.SocketServer;
@@ -21,14 +19,17 @@ public class NioServerTest {
 class NioServerProtocolHandler implements ProtocolHandler<Object> {
     int last = 0;
     int count = 0;
+    int n = 0;
 
     @Override
     public void read(ChannelContext<Object> channelContext, MultiByteBuffer byteBuffer) throws IOException {
-        byte[] dst = new byte[byteBuffer.limit()];
+        int r = byteBuffer.remaining();
+        byte[] dst = new byte[r];
         byteBuffer.get(dst);
-        for (int i = 0; i < byteBuffer.limit(); i++) {
+        for (int i = 0; i < r; i++) {
             if (last != dst[i]) {
-                System.out.println(1);
+                last = 0;
+                System.out.println("error");
             }
             last++;
             count++;
@@ -37,6 +38,9 @@ class NioServerProtocolHandler implements ProtocolHandler<Object> {
             }
             if (count == 1000000) {
                 last = 0;
+                count = 0;
+                n++;
+                System.out.println(channelContext.toString() + "\t" + n);
             }
         }
     }

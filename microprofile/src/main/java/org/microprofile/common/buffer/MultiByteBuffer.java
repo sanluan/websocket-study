@@ -2,6 +2,7 @@ package org.microprofile.common.buffer;
 
 import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
+import java.nio.InvalidMarkException;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -14,6 +15,7 @@ public class MultiByteBuffer {
     private int limit = 0;
     private int byteBufferIndex = 0;
     private int currentLimit = 0;
+    private int mark = -1;
     private ByteBuffer byteBuffer;
 
     /**
@@ -129,6 +131,26 @@ public class MultiByteBuffer {
         for (ByteBuffer byteBuffer : byteBuffers) {
             put(byteBuffer);
         }
+        return this;
+    }
+
+    /**
+     * @return
+     */
+    public MultiByteBuffer mark() {
+        mark = position;
+        return this;
+    }
+
+    /**
+     * @return
+     */
+    public MultiByteBuffer reset() {
+        if (mark < 0) {
+            throw new InvalidMarkException();
+        }
+        position(mark);
+        mark = 0;
         return this;
     }
 

@@ -10,11 +10,12 @@ import java.nio.channels.SocketChannel;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import org.microprofile.nio.handler.ChannelContext;
 import org.microprofile.nio.handler.ProtocolHandler;
 import org.microprofile.nio.handler.SocketProcesser;
 
 public class SocketClient extends SocketProcesser implements Closeable {
-    SocketChannel socketChannel;
+    ChannelContext<?> channelContext;
 
     public SocketClient(String host, int port, ExecutorService pool, ProtocolHandler<?> protocolHandler) throws IOException {
         this(new InetSocketAddress(host, port), pool, protocolHandler);
@@ -23,24 +24,27 @@ public class SocketClient extends SocketProcesser implements Closeable {
     public SocketClient(SocketAddress socketAddress, ExecutorService pool, ProtocolHandler<?> protocolHandler)
             throws IOException {
         super(pool, protocolHandler);
-        socketChannel = SocketChannel.open(socketAddress);
+        SocketChannel socketChannel = SocketChannel.open(socketAddress);
         socketChannel.configureBlocking(false);
-        socketChannel.register(selector, SelectionKey.OP_READ);
+        socketChannel.finishConnect();
+        channelContext = new ChannelContext<>(protocolHandler, socketChannel);
+        socketChannel.register(selector, SelectionKey.OP_READ, channelContext);
+
     }
 
     public void listen() throws IOException {
         if (null == pool) {
             pool = Executors.newFixedThreadPool(1);
         }
-        while (socketChannel.isOpen()) {
+        while (channelContext.isOpen()) {
             polling();
         }
     }
 
     public void asyncListen() throws IOException {
         StringBuilder sb = new StringBuilder("Thread [Client ");
-        sb.append(socketChannel.getLocalAddress()).append(" to server ").append(socketChannel.getRemoteAddress())
-                .append(" listener]");
+        sb.append(channelContext.getSocketChannel().getLocalAddress()).append(" to server ")
+                .append(channelContext.getSocketChannel().getRemoteAddress()).append(" listener]");
         new Thread(sb.toString()) {
             public void run() {
                 try {
@@ -56,26 +60,26 @@ public class SocketClient extends SocketProcesser implements Closeable {
     }
 
     public SocketClient sendMessage(byte[] message) throws IOException {
-        if (null != socketChannel) {
-            socketChannel.write(ByteBuffer.wrap(message));
+        if (null != channelContext) {
+            channelContext.write(ByteBuffer.wrap(message));
         }
         return this;
     }
 
     public void reConnect() throws IOException {
-        if (socketChannel.isOpen()) {
-            socketChannel.connect(socketChannel.getRemoteAddress());
+        if (channelContext.isOpen()) {
+            channelContext.getSocketChannel().connect(channelContext.getSocketChannel().getRemoteAddress());
         }
     }
 
     public void close() throws IOException {
-        if (socketChannel.isOpen()) {
-            socketChannel.close();
+        if (channelContext.isOpen()) {
+            channelContext.close();
         }
         super.close();
     }
 
-    public SocketChannel getSocketChannel() {
-        return socketChannel;
+    public ChannelContext<?> getChannelContext() {
+        return channelContext;
     }
 }

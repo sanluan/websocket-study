@@ -26,7 +26,7 @@ public class WebSocketTest {
         WebSocketTestHandler clientHandler = new WebSocketTestHandler();
         WebSocketClient wsc = new WebSocketClient("localhost", 1000, "/", clientHandler);
         wsc.asyncListen();
-        Thread.sleep(1000);
+        Thread.sleep(10000);
         assertEquals(1, serverHandler.sessions.size());
         assertEquals(1, clientHandler.sessions.size());
         Random random = new Random();

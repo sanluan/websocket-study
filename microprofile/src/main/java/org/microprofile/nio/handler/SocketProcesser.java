@@ -3,6 +3,7 @@ package org.microprofile.nio.handler;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
@@ -14,6 +15,8 @@ public abstract class SocketProcesser implements Closeable {
     protected Selector selector;
     protected ExecutorService pool;
     protected ProtocolHandler<?> protocolHandler;
+    int last = 0;
+    int count = 0;
 
     public SocketProcesser(ExecutorService pool, ProtocolHandler<?> protocolHandler) throws IOException {
         this.selector = Selector.open();
@@ -30,25 +33,23 @@ public abstract class SocketProcesser implements Closeable {
                 if (key.isAcceptable()) {
                     ServerSocketChannel server = (ServerSocketChannel) key.channel();
                     SocketChannel socketChannel = server.accept();
-                    socketChannel.configureBlocking(false);
-                    socketChannel.register(key.selector(), SelectionKey.OP_READ);
+                    SelectableChannel selectableChannel = socketChannel.configureBlocking(false);
+                    selectableChannel.register(key.selector(), SelectionKey.OP_READ,
+                            new ChannelContext<>(protocolHandler, socketChannel));
                 } else if (key.isReadable()) {
                     SocketChannel client = (SocketChannel) key.channel();
-                    ByteBuffer byteBuffer = ByteBuffer.allocateDirect(2048);
                     ChannelContext<?> channelContext = (ChannelContext<?>) key.attachment();
-                    if (null == channelContext) {
-                        channelContext = new ChannelContext<>(key, protocolHandler, client);
-                        key.attach(channelContext);
-                    }
-                    int n = -1;
                     try {
-                        n = client.read(byteBuffer);
+                        ByteBuffer byteBuffer = ByteBuffer.allocate(2048);
+                        int n = client.read(byteBuffer);
                         if (0 < n) {
                             ThreadHandler<?> threadHandler = channelContext.getThreadHandler();
                             threadHandler.addByteBuffer(byteBuffer);
                             if (!threadHandler.isRunning()) {
                                 pool.execute(threadHandler);
                             }
+                        } else if (-1 == n) {
+                            channelContext.close();
                         }
                     } catch (Exception ex) {
                         channelContext.close();
@@ -56,12 +57,15 @@ public abstract class SocketProcesser implements Closeable {
                 }
             }
         }
+
     }
 
     @Override
     public void close() throws IOException {
-        selector.close();
-        if (null != pool) {
+        if (selector.isOpen()) {
+            selector.close();
+        }
+        if (null != pool && !pool.isShutdown()) {
             pool.shutdown();
         }
     }

@@ -2,13 +2,12 @@ package org.microprofile.nio.handler;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.nio.channels.SelectionKey;
+import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 
 import org.microprofile.common.buffer.MultiByteBuffer;
 
 public class ChannelContext<T> implements Closeable {
-    private SelectionKey key;
     private SocketChannel socketChannel;
     private ProtocolHandler<T> protocolHandler;
     private ThreadHandler<T> threadHandler;
@@ -17,8 +16,7 @@ public class ChannelContext<T> implements Closeable {
     private MultiByteBuffer cachedBuffer;
     private int payloadLength;
 
-    public ChannelContext(SelectionKey key, ProtocolHandler<T> protocolHandler, SocketChannel socketChannel) {
-        this.key = key;
+    public ChannelContext(ProtocolHandler<T> protocolHandler, SocketChannel socketChannel) {
         this.socketChannel = socketChannel;
         this.protocolHandler = protocolHandler;
         this.threadHandler = new ThreadHandler<>(this);
@@ -28,18 +26,44 @@ public class ChannelContext<T> implements Closeable {
     public void close() throws IOException {
         if (!closed) {
             closed = true;
-            key.cancel();
             threadHandler.close();
             protocolHandler.close(this);
         }
-        socketChannel.close();
+        if (socketChannel.isOpen()) {
+            socketChannel.close();
+        }
     }
 
     /**
-     * @return the key
+     * @param src
+     * @return
+     * @throws IOException
      */
-    public SelectionKey getKey() {
-        return key;
+    public int write(ByteBuffer src) throws IOException {
+        int i = 0;
+        while (src.hasRemaining()) {
+            i = socketChannel.write(src);
+        }
+        return i;
+    }
+
+    /**
+     * @param message
+     * @return
+     * @throws IOException
+     */
+    public int write(String message) throws IOException {
+        return write(message.getBytes());
+    }
+
+    /**
+     * @param message
+     * @return
+     * @throws IOException
+     */
+    public int write(byte[] message) throws IOException {
+        ByteBuffer byteBuffer = ByteBuffer.wrap(message);
+        return write(byteBuffer);
     }
 
     /**
@@ -66,8 +90,8 @@ public class ChannelContext<T> implements Closeable {
     /**
      * @return the closed
      */
-    public boolean isClosed() {
-        return closed;
+    public boolean isOpen() {
+        return socketChannel.isOpen();
     }
 
     /**

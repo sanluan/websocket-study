@@ -29,12 +29,29 @@ public class WebSocketServerTest {
 class ServerMessageHandler implements MessageHandler {
     protected final Log log = LogFactory.getLog(getClass());
     private List<Session> sessionList = new ArrayList<Session>();
+    int last = 0;
+    int count = 0;
+    int n = 0;
 
     @Override
     public void onMessage(byte[] message, Session session) throws IOException {
-        String str = new String(message);
-        log.info(str);
-        session.sendByte(message);
+        for (int i = 0; i < message.length; i++) {
+            if (last != message[i]) {
+                last = 0;
+                System.out.println("error");
+            }
+            last++;
+            count++;
+            if (last == 126) {
+                last = 0;
+            }
+            if (count == 1000000) {
+                last = 0;
+                count = 0;
+                n++;
+                System.out.println(session.getId() + "\t" + n);
+            }
+        }
     }
 
     @Override
