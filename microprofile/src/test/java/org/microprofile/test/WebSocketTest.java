@@ -26,15 +26,23 @@ public class WebSocketTest {
         WebSocketTestHandler clientHandler = new WebSocketTestHandler();
         WebSocketClient wsc = new WebSocketClient("localhost", 1000, "/", clientHandler);
         wsc.asyncListen();
-        Thread.sleep(10000);
-        assertEquals(1, serverHandler.sessions.size());
-        assertEquals(1, clientHandler.sessions.size());
+        WebSocketClient wsc2 = new WebSocketClient("localhost", 1000, "/", clientHandler);
+        wsc2.asyncListen();
+        Thread.sleep(1000);
+        assertEquals(2, serverHandler.sessions.size());
+        assertEquals(2, clientHandler.sessions.size());
         Random random = new Random();
         Vector<byte[]> sendMessageList = new Vector<>();
         for (int i = 0; i <= 100; i++) {
             byte[] randBytes = new byte[1 + random.nextInt(100000)];
             random.nextBytes(randBytes);
             wsc.sendByte(randBytes);
+            sendMessageList.add(randBytes);
+        }
+        for (int i = 0; i <= 100; i++) {
+            byte[] randBytes = new byte[1 + random.nextInt(100000)];
+            random.nextBytes(randBytes);
+            wsc2.sendByte(randBytes);
             sendMessageList.add(randBytes);
         }
         Thread.sleep(5000);
@@ -45,6 +53,7 @@ public class WebSocketTest {
         }
         wss.close();
         wsc.close();
+        wsc2.close();
     }
 }
 

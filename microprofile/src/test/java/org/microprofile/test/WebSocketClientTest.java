@@ -17,11 +17,13 @@ public class WebSocketClientTest {
             log.info("启动。。。");
             new WebSocketClientThread(ws).start();
             Thread.sleep(1000);
-            byte[] randBytes = new byte[100];
-            for (int j = 0; j < 100; j++) {
-                randBytes[j] = (byte) (j % 126);
+            for (int i = 0; i < 100; i++) {
+                byte[] randBytes = new byte[1000000];
+                for (int j = 0; j < 1000000; j++) {
+                    randBytes[j] = (byte) (j % 126);
+                }
+                ws.sendByte(randBytes);
             }
-            ws.sendByte(randBytes);
         } catch (IOException e) {
             e.printStackTrace();
         }
