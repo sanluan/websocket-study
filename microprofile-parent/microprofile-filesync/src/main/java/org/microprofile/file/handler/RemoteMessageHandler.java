@@ -15,8 +15,8 @@ import java.util.Map;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.microprofile.common.constant.Constants;
 import org.microprofile.common.utils.EncodeUtils;
-import org.microprofile.file.constant.Constants;
 import org.microprofile.file.event.EventHandler;
 import org.microprofile.file.event.FileEvent;
 import org.microprofile.file.event.FileEvent.EventType;
@@ -28,10 +28,15 @@ import org.microprofile.websocket.handler.Session;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class RemoteMessageHandler implements MessageHandler {
     protected final Log log = LogFactory.getLog(getClass());
     private Map<String, Session> sessionMap = new HashMap<>();
+    /**
+     * Json Mapper
+     */
+    public static final ObjectMapper objectMapper = new ObjectMapper();
 
     private static byte HEADER_FILE_CREATE = EventType.FILE_CREATE.getCode();
     private static byte HEADER_FILE_MODIFY = EventType.FILE_MODIFY.getCode();
@@ -141,7 +146,7 @@ public class RemoteMessageHandler implements MessageHandler {
 
     private void handleFileChecksum(byte[] payload, Session session) {
         try {
-            FileChecksum fileChecksum = Constants.objectMapper.readValue(payload, 1, payload.length - 1, FileChecksum.class);
+            FileChecksum fileChecksum = objectMapper.readValue(payload, 1, payload.length - 1, FileChecksum.class);
             if (null != fileChecksum) {
                 FileChecksumResult result = null;
                 String filePath = fileChecksum.getFilePath();
@@ -202,7 +207,7 @@ public class RemoteMessageHandler implements MessageHandler {
                 int blockSize = EncodeUtils.bype2Int(Arrays.copyOfRange(payload, startIndex, startIndex + LENGTH_INT));
                 startIndex += LENGTH_INT;
                 try {
-                    List<BlockChecksum> blockChecksumList = Constants.objectMapper.readValue(payload, startIndex,
+                    List<BlockChecksum> blockChecksumList = objectMapper.readValue(payload, startIndex,
                             payload.length - startIndex, new TypeReference<List<BlockChecksum>>() {
                             });
                     if (null != blockChecksumList) {
@@ -261,7 +266,7 @@ public class RemoteMessageHandler implements MessageHandler {
                 int blockSize = EncodeUtils.bype2Int(Arrays.copyOfRange(payload, startIndex, startIndex + LENGTH_INT));
                 startIndex += LENGTH_INT;
                 try {
-                    List<Integer> blockChecksumResultList = Constants.objectMapper.readValue(payload, startIndex,
+                    List<Integer> blockChecksumResultList = objectMapper.readValue(payload, startIndex,
                             payload.length - startIndex, new TypeReference<List<Integer>>() {
                             });
                     if (null != blockChecksumResultList) {
@@ -291,7 +296,7 @@ public class RemoteMessageHandler implements MessageHandler {
 
     private void handleFileChecksumResult(byte[] payload, Session session) {
         try {
-            FileChecksumResult fileChecksumResult = Constants.objectMapper.readValue(payload, 1, payload.length - 1,
+            FileChecksumResult fileChecksumResult = objectMapper.readValue(payload, 1, payload.length - 1,
                     FileChecksumResult.class);
             if (null != fileChecksumResult) {
                 String filePath = fileChecksumResult.getFilePath();
@@ -487,7 +492,7 @@ public class RemoteMessageHandler implements MessageHandler {
             throws JsonProcessingException {
         byte[] pathByte = getFilePathByte(filePath);
         int headerLength = HEADER_LENGTH + pathByte.length;
-        byte[] data = Constants.objectMapper.writeValueAsBytes(blockList);
+        byte[] data = objectMapper.writeValueAsBytes(blockList);
         byte[] payload = new byte[headerLength + LENGTH_LONG + LENGTH_INT + data.length];
 
         setHeader(code, pathByte, payload);
@@ -516,7 +521,7 @@ public class RemoteMessageHandler implements MessageHandler {
     }
 
     private void sendFile(Session session, byte code, Object object) throws JsonProcessingException {
-        byte[] data = Constants.objectMapper.writeValueAsBytes(object);
+        byte[] data = objectMapper.writeValueAsBytes(object);
         byte[] payload = new byte[1 + data.length];
         payload[0] = code;
         System.arraycopy(data, 0, payload, 1, data.length);

@@ -5,7 +5,7 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.UUID;
 
-import org.microprofile.file.constant.Constants;
+import org.microprofile.common.constant.Constants;
 import org.microprofile.nio.handler.ChannelContext;
 import org.microprofile.websocket.utils.MessageUtils;
 

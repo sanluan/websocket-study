@@ -1,0 +1,12 @@
+group = 'org.microprofile'
+
+dependencies {
+    compile project(':microprofile-common')
+    compile (
+        "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}"
+    )
+    testCompile(
+        // http://mvnrepository.com/artifact/junit/junit
+        "junit:junit:4.12"
+    )
+}

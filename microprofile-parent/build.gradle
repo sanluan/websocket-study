@@ -1,0 +1,35 @@
+buildscript {
+	repositories {
+		jcenter()
+		mavenCentral()
+	}
+}
+apply plugin: 'idea'
+apply plugin: 'eclipse'
+
+subprojects{
+  apply plugin: "java"
+  apply plugin: 'idea'
+  apply plugin: "eclipse"
+
+  group = 'org.microprofile'
+  version = '1.0-SNAPSHOT'
+
+  sourceCompatibility = 1.8
+  targetCompatibility = 1.8
+
+  [compileJava]*.options*.encoding = "UTF-8"
+  [compileTestJava]*.options*.encoding = "UTF-8"
+
+  test.enabled = false
+
+  repositories {
+    mavenLocal()
+    jcenter()
+    mavenCentral()
+  }
+  ext {
+      // http://mvnrepository.com/artifact/com.fasterxml.jackson.core/jackson-core
+      jacksonVersion = "2.9.8"
+  }
+}

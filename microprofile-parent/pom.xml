@@ -3,13 +3,18 @@
     xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.microprofile</groupId>
-    <artifactId>microprofile</artifactId>
+    <artifactId>microprofile-parent</artifactId>
+	<packaging>pom</packaging>
     <version>1.0-SNAPSHOT</version>
+	<modules>
+        <module>microprofile-common</module>
+        <module>microprofile-filesync</module>
+    </modules>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.encoding>UTF-8</maven.compiler.encoding>
         <!-- http://mvnrepository.com/artifact/com.fasterxml.jackson.core/jackson-core -->
-        <version.jackson>2.9.7</version.jackson>
+        <version.jackson>2.9.8</version.jackson>
     </properties>
     <repositories>
         <repository>
@@ -23,32 +28,34 @@
             <url>http://jcenter.bintray.com/</url>
         </pluginRepository>
     </pluginRepositories>
-    <dependencies>
-        <!-- http://mvnrepository.com/artifact/commons-io/commons-io -->
-        <dependency>
-            <groupId>commons-io</groupId>
-            <artifactId>commons-io</artifactId>
-            <version>2.6</version>
-        </dependency>
-        <!-- https://mvnrepository.com/artifact/commons-logging/commons-logging -->
-        <dependency>
-            <groupId>commons-logging</groupId>
-            <artifactId>commons-logging</artifactId>
-            <version>1.2</version>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.core</groupId>
-            <artifactId>jackson-databind</artifactId>
-            <version>${version.jackson}</version>
-        </dependency>
-        <!-- https://mvnrepository.com/artifact/junit/junit -->
-        <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.12</version>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
+	<dependencyManagement>
+		<dependencies>
+			<!-- http://mvnrepository.com/artifact/commons-io/commons-io -->
+			<dependency>
+				<groupId>commons-io</groupId>
+				<artifactId>commons-io</artifactId>
+				<version>2.6</version>
+			</dependency>
+			<!-- https://mvnrepository.com/artifact/commons-logging/commons-logging -->
+			<dependency>
+				<groupId>commons-logging</groupId>
+				<artifactId>commons-logging</artifactId>
+				<version>1.2</version>
+			</dependency>
+			<dependency>
+				<groupId>com.fasterxml.jackson.core</groupId>
+				<artifactId>jackson-databind</artifactId>
+				<version>${version.jackson}</version>
+			</dependency>
+			<!-- https://mvnrepository.com/artifact/junit/junit -->
+			<dependency>
+				<groupId>junit</groupId>
+				<artifactId>junit</artifactId>
+				<version>4.12</version>
+				<scope>test</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
     <build>
         <defaultGoal>compile</defaultGoal>
         <finalName>${project.artifactId}</finalName>

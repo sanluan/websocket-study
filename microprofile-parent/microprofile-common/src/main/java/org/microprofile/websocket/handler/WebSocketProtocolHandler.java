@@ -6,7 +6,7 @@ import java.nio.ByteBuffer;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.microprofile.common.buffer.MultiByteBuffer;
-import org.microprofile.file.constant.Constants;
+import org.microprofile.common.constant.Constants;
 import org.microprofile.nio.handler.ChannelContext;
 import org.microprofile.nio.handler.ProtocolHandler;
 import org.microprofile.websocket.utils.HttpProtocolUtils;

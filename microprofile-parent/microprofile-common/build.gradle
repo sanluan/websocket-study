@@ -1,0 +1,14 @@
+group = 'org.microprofile'
+
+dependencies {
+    compile (
+        // http://mvnrepository.com/artifact/commons-io/commons-io
+        "commons-io:commons-io:2.6",
+        // https://mvnrepository.com/artifact/commons-logging/commons-logging
+        "commons-logging:commons-logging:1.2"
+    )
+    testCompile(
+        // http://mvnrepository.com/artifact/junit/junit
+        "junit:junit:4.12"
+    )
+}
