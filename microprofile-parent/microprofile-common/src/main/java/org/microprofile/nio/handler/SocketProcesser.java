@@ -40,7 +40,7 @@ public abstract class SocketProcesser implements Closeable {
                     SocketChannel client = (SocketChannel) key.channel();
                     ChannelContext<?> channelContext = (ChannelContext<?>) key.attachment();
                     try {
-                        ByteBuffer byteBuffer = ByteBuffer.allocate(2048);
+                        ByteBuffer byteBuffer = ByteBuffer.allocateDirect(2048);
                         int n = client.read(byteBuffer);
                         if (0 < n) {
                             ThreadHandler<?> threadHandler = channelContext.getThreadHandler();

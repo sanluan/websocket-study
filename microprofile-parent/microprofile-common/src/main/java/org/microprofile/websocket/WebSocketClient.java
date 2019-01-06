@@ -2,6 +2,8 @@ package org.microprofile.websocket;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.concurrent.Executors;
 
 import org.microprofile.nio.SocketClient;
@@ -16,21 +18,29 @@ public class WebSocketClient implements Closeable {
     private SocketClient socketClient;
     private ChannelContext<?> channelContext;
 
+    public WebSocketClient(String url, MessageHandler messageHandler) throws IOException, URISyntaxException {
+        this(new URI(url), messageHandler);
+    }
+
+    public WebSocketClient(URI uri, MessageHandler messageHandler) throws IOException {
+        this(uri.getHost(), uri.getPort(), uri.getPath(), messageHandler);
+    }
+
     /**
      * @param host
      * @param port
-     * @param url
+     * @param path
      * @param messageHandler
      * @throws IOException
      */
-    public WebSocketClient(String host, int port, String url, MessageHandler messageHandler) throws IOException {
+    public WebSocketClient(String host, int port, String path, MessageHandler messageHandler) throws IOException {
         if (null == messageHandler) {
             throw new IllegalArgumentException("messageHandler can't be null");
         }
         socketClient = new SocketClient(host, port, Executors.newFixedThreadPool(1),
                 new WebSocketProtocolHandler(messageHandler, false));
         channelContext = socketClient.getChannelContext();
-        channelContext.write(HttpProtocolUtils.getHandshake(host, port, url));
+        channelContext.write(HttpProtocolUtils.getHandshake(host, port, path));
     }
 
     /**

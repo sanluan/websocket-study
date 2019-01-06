@@ -105,9 +105,9 @@ public class HttpProtocolUtils {
         return stringBuilder.toString();
     }
 
-    public static String getHandshake(String host, int port, String url) {
+    public static String getHandshake(String host, int port, String path) {
         StringBuilder sb = new StringBuilder("GET ");
-        sb.append(url).append(" HTTP/1.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nHost: ");
+        sb.append(path).append(" HTTP/1.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nHost: ");
         sb.append(host).append(":").append(port).append(
                 "\r\nOrigin: null\r\nSec-WebSocket-Key: SN3OSin4/Zok8kmgrD8qxQ==\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Extensions: x-webkit-deflate-frame\r\n\r\n");
         return sb.toString();
