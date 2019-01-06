@@ -24,7 +24,7 @@ public class ThreadHandler<T> implements Runnable, Closeable {
 
     public boolean addByteBuffer(ByteBuffer byteBuffer) {
         byteBufferQueue.add(byteBuffer);
-        return running;
+        return !running;
     }
 
     @Override
@@ -59,8 +59,6 @@ public class ThreadHandler<T> implements Runnable, Closeable {
             }
             lock.lock();
             running = false;
-        }else {
-            System.out.println(1);
         }
         lock.unlock();
     }

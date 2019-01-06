@@ -16,7 +16,7 @@ public class NioClientTest {
         SocketClient socketClient = new SocketClient("127.0.0.1", 1000, null, new NioClientProtocolHandler());
         new NioClientThread(socketClient).start();
         Thread.sleep(1000);
-        for (int i = 0; i < 100; i++) {
+        for (int i = 0; i < 10000; i++) {
             byte[] randBytes = new byte[1000000];
             for (int j = 0; j < 1000000; j++) {
                 randBytes[j] = (byte) (j % 126);

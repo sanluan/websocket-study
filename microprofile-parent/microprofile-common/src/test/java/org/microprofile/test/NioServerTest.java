@@ -1,6 +1,7 @@
 package org.microprofile.test;
 
 import java.io.IOException;
+import java.util.concurrent.Executors;
 
 import org.microprofile.common.buffer.MultiByteBuffer;
 import org.microprofile.nio.SocketServer;
@@ -10,7 +11,7 @@ import org.microprofile.nio.handler.ProtocolHandler;
 public class NioServerTest {
 
     public static void main(String[] arg) throws IOException {
-        SocketServer socketServer = new SocketServer(1000, null, new NioServerProtocolHandler());
+        SocketServer socketServer = new SocketServer(1000, Executors.newFixedThreadPool(20), new NioServerProtocolHandler());
         socketServer.listen();
         socketServer.close();
     }
@@ -36,11 +37,11 @@ class NioServerProtocolHandler implements ProtocolHandler<Object> {
             if (last == 126) {
                 last = 0;
             }
-            if (count == 1000000) {
+            if (count == 100000000) {
                 last = 0;
                 count = 0;
                 n++;
-                System.out.println(channelContext.toString() + "\t" + n);
+                System.out.println(n);
             }
         }
     }

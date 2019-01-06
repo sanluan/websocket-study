@@ -28,21 +28,15 @@ public abstract class SocketProcesser implements Closeable {
             while (keyIterator.hasNext()) {
                 SelectionKey key = keyIterator.next();
                 keyIterator.remove();
-                if (key.isAcceptable()) {
-                    ServerSocketChannel server = (ServerSocketChannel) key.channel();
-                    SocketChannel socketChannel = server.accept();
-                    SelectableChannel selectableChannel = socketChannel.configureBlocking(false);
-                    selectableChannel.register(key.selector(), SelectionKey.OP_READ,
-                            new ChannelContext<>(protocolHandler, socketChannel));
-                } else if (key.isReadable()) {
-                    SocketChannel client = (SocketChannel) key.channel();
+                if (key.isReadable()) {
+                    SocketChannel socketChannel = (SocketChannel) key.channel();
                     ChannelContext<?> channelContext = (ChannelContext<?>) key.attachment();
                     try {
-                        ByteBuffer byteBuffer = ByteBuffer.allocateDirect(2048);
-                        int n = client.read(byteBuffer);
+                        ByteBuffer byteBuffer = ByteBuffer.allocate(2048);
+                        int n = socketChannel.read(byteBuffer);
                         if (0 < n) {
                             ThreadHandler<?> threadHandler = channelContext.getThreadHandler();
-                            if (!threadHandler.addByteBuffer(byteBuffer)) {
+                            if (threadHandler.addByteBuffer(byteBuffer)) {
                                 pool.execute(threadHandler);
                             }
                         } else if (-1 == n) {
@@ -51,10 +45,15 @@ public abstract class SocketProcesser implements Closeable {
                     } catch (Exception ex) {
                         channelContext.close();
                     }
+                } else if (key.isAcceptable()) {
+                    ServerSocketChannel server = (ServerSocketChannel) key.channel();
+                    SocketChannel socketChannel = server.accept();
+                    SelectableChannel selectableChannel = socketChannel.configureBlocking(false);
+                    selectableChannel.register(key.selector(), SelectionKey.OP_READ,
+                            new ChannelContext<>(protocolHandler, socketChannel));
                 }
             }
         }
-
     }
 
     @Override
