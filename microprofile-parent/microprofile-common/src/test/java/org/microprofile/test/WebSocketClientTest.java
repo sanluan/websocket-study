@@ -1,6 +1,7 @@
 package org.microprofile.test;
 
 import java.io.IOException;
+import java.net.URISyntaxException;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -11,13 +12,13 @@ import org.microprofile.websocket.handler.Session;
 public class WebSocketClientTest {
     protected static final Log log = LogFactory.getLog(WebSocketClientTest.class);
 
-    public static void main(String[] args) throws InterruptedException {
+    public static void main(String[] args) throws InterruptedException, URISyntaxException {
         try {
-            WebSocketClient ws = new WebSocketClient("localhost", 1000, "/", new ClientMessageHandler());
+            WebSocketClient ws = new WebSocketClient("ws://localhost:1000", new ClientMessageHandler());
             log.info("启动。。。");
             new WebSocketClientThread(ws).start();
             Thread.sleep(1000);
-            for (int i = 0; i < 100; i++) {
+            for (int i = 0; i < 1000; i++) {
                 byte[] randBytes = new byte[1000000];
                 for (int j = 0; j < 1000000; j++) {
                     randBytes[j] = (byte) (j % 126);

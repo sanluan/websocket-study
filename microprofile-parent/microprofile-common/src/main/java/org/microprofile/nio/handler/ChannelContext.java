@@ -5,16 +5,12 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 
-import org.microprofile.common.buffer.MultiByteBuffer;
-
 public class ChannelContext<T> implements Closeable {
     private SocketChannel socketChannel;
     private ProtocolHandler<T> protocolHandler;
     private ThreadHandler<T> threadHandler;
     private boolean closed;
     private T attachment;
-    private MultiByteBuffer cachedBuffer;
-    private int payloadLength;
 
     public ChannelContext(ProtocolHandler<T> protocolHandler, SocketChannel socketChannel) {
         this.socketChannel = socketChannel;
@@ -112,28 +108,14 @@ public class ChannelContext<T> implements Closeable {
     /**
      * @return
      */
-    public MultiByteBuffer getCachedBuffer() {
-        return cachedBuffer;
-    }
-
-    /**
-     * @param cachedBuffer
-     */
-    public void setCachedBuffer(MultiByteBuffer cachedBuffer) {
-        this.cachedBuffer = cachedBuffer;
-    }
-
-    /**
-     * @return
-     */
     public int getPayloadLength() {
-        return payloadLength;
+        return threadHandler.getPayloadLength();
     }
 
     /**
      * @param payloadLength
      */
     public void setPayloadLength(int payloadLength) {
-        this.payloadLength = payloadLength;
+        this.threadHandler.setPayloadLength(payloadLength);
     }
 }

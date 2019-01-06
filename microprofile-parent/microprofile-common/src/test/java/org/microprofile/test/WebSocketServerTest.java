@@ -15,7 +15,7 @@ public class WebSocketServerTest {
 
     public static void main(String[] args) throws InterruptedException {
         try {
-            WebSocketServer ws = new WebSocketServer(1000, 1, new ServerMessageHandler());
+            WebSocketServer ws = new WebSocketServer(1000, 20, new ServerMessageHandler());
             log.info("启动。。。");
             ws.asyncListen();
             Thread.sleep(1000 * 1000);
@@ -49,7 +49,7 @@ class ServerMessageHandler implements MessageHandler {
                 last = 0;
                 count = 0;
                 n++;
-                System.out.println(session.getId() + "\t" + n);
+                System.out.println(session.getId() + "\t" + n + "\t" + System.currentTimeMillis());
             }
         }
     }

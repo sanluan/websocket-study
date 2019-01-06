@@ -15,8 +15,6 @@ public abstract class SocketProcesser implements Closeable {
     protected Selector selector;
     protected ExecutorService pool;
     protected ProtocolHandler<?> protocolHandler;
-    int last = 0;
-    int count = 0;
 
     public SocketProcesser(ExecutorService pool, ProtocolHandler<?> protocolHandler) throws IOException {
         this.selector = Selector.open();
@@ -44,8 +42,7 @@ public abstract class SocketProcesser implements Closeable {
                         int n = client.read(byteBuffer);
                         if (0 < n) {
                             ThreadHandler<?> threadHandler = channelContext.getThreadHandler();
-                            threadHandler.addByteBuffer(byteBuffer);
-                            if (!threadHandler.isRunning()) {
+                            if (!threadHandler.addByteBuffer(byteBuffer)) {
                                 pool.execute(threadHandler);
                             }
                         } else if (-1 == n) {
