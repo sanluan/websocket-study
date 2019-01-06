@@ -12,6 +12,8 @@ public class FileClientTest {
             FileEventHandler fileEventHandler = new FileEventHandler(listener.getLocalFileAdaptor());
             WebSocketClient ws = new WebSocketClient("localhost", 1000, "/", fileEventHandler.getRemoteMessageHandler(false));
             ws.asyncListen();
+            listener.addEventHandler(fileEventHandler);
+            listener.start();
             Thread.sleep(1000 * 1000);
             ws.close();
         } catch (Exception e) {
