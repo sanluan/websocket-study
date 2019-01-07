@@ -11,6 +11,7 @@ public class ChannelContext<T> implements Closeable {
     private ThreadHandler<T> threadHandler;
     private boolean closed;
     private T attachment;
+    private int tryCount = 20;
 
     public ChannelContext(ProtocolHandler<T> protocolHandler, SocketChannel socketChannel) {
         this.socketChannel = socketChannel;
@@ -36,9 +37,12 @@ public class ChannelContext<T> implements Closeable {
      * @throws IOException
      */
     public int write(ByteBuffer src) throws IOException {
-        int i = 0;
+        int i = 0, j = 0;
         while (src.hasRemaining()) {
             i = socketChannel.write(src);
+            if (i == 0 && j++ >= tryCount) {
+                break;
+            }
         }
         return i;
     }
@@ -117,5 +121,13 @@ public class ChannelContext<T> implements Closeable {
      */
     public void setPayloadLength(int payloadLength) {
         this.threadHandler.setPayloadLength(payloadLength);
+    }
+
+    /**
+     * @param tryCount
+     *            the tryCount to set
+     */
+    public void setTryCount(int tryCount) {
+        this.tryCount = tryCount;
     }
 }

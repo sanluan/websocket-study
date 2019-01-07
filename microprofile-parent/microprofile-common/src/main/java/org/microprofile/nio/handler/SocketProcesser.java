@@ -32,14 +32,18 @@ public abstract class SocketProcesser implements Closeable {
                     SocketChannel socketChannel = (SocketChannel) key.channel();
                     ChannelContext<?> channelContext = (ChannelContext<?>) key.attachment();
                     try {
-                        ByteBuffer byteBuffer = ByteBuffer.allocate(2048);
+                        ThreadHandler<?> threadHandler = channelContext.getThreadHandler();
+                        ByteBuffer byteBuffer = ByteBuffer.allocateDirect(2048);
                         int n = socketChannel.read(byteBuffer);
-                        if (0 < n) {
-                            ThreadHandler<?> threadHandler = channelContext.getThreadHandler();
+                        while (0 < n) {
+                            byteBuffer.flip();
                             if (threadHandler.addByteBuffer(byteBuffer)) {
                                 pool.execute(threadHandler);
                             }
-                        } else if (-1 == n) {
+                            byteBuffer = ByteBuffer.allocateDirect(2048);
+                            n = socketChannel.read(byteBuffer);
+                        }
+                        if (-1 == n) {
                             channelContext.close();
                         }
                     } catch (Exception ex) {

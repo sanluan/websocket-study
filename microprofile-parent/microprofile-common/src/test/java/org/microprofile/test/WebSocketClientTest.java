@@ -16,35 +16,24 @@ public class WebSocketClientTest {
         try {
             WebSocketClient ws = new WebSocketClient("ws://localhost:1000", new ClientMessageHandler());
             log.info("启动。。。");
-            new WebSocketClientThread(ws).start();
-            Thread.sleep(1000);
+            ws.asyncListen();
+            while (!ws.isOpen()) {
+                Thread.sleep(100);
+            }
             for (int i = 0; i < 10000; i++) {
                 byte[] randBytes = new byte[1000000];
                 for (int j = 0; j < 1000000; j++) {
                     randBytes[j] = (byte) (j % 126);
                 }
                 ws.sendByte(randBytes);
+                Thread.sleep(50);
             }
+            ws.close();
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-}
-
-class WebSocketClientThread extends Thread {
-    private WebSocketClient ws;
-
-    public WebSocketClientThread(WebSocketClient ws) {
-        this.ws = ws;
-    }
-
-    public void run() {
-        try {
-            ws.listen();
-        } catch (IOException e) {
-        }
-    }
 }
 
 class ClientMessageHandler implements MessageHandler {

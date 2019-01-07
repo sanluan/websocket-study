@@ -45,13 +45,11 @@ class ServerMessageHandler implements MessageHandler {
             if (last == 126) {
                 last = 0;
             }
-            if (count == 1000000) {
-                last = 0;
-                count = 0;
-                n++;
-                System.out.println(session.getId() + "\t" + n + "\t" + System.currentTimeMillis());
-            }
         }
+        last = 0;
+        count = 0;
+        n++;
+        System.out.println(session.getId() + "\t" + n + "\t" + System.currentTimeMillis());
     }
 
     @Override

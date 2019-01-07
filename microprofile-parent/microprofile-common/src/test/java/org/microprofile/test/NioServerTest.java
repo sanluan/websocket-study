@@ -37,7 +37,7 @@ class NioServerProtocolHandler implements ProtocolHandler<Object> {
             if (last == 126) {
                 last = 0;
             }
-            if (count == 100000000) {
+            if (count == 1000000) {
                 last = 0;
                 count = 0;
                 n++;

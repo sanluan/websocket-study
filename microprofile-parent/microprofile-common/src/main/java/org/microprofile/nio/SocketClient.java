@@ -15,7 +15,7 @@ import org.microprofile.nio.handler.ProtocolHandler;
 import org.microprofile.nio.handler.SocketProcesser;
 
 public class SocketClient extends SocketProcesser implements Closeable {
-    ChannelContext<?> channelContext;
+    protected ChannelContext<?> channelContext;
 
     public SocketClient(String host, int port, ExecutorService pool, ProtocolHandler<?> protocolHandler) throws IOException {
         this(new InetSocketAddress(host, port), pool, protocolHandler);
@@ -26,7 +26,6 @@ public class SocketClient extends SocketProcesser implements Closeable {
         super(pool, protocolHandler);
         SocketChannel socketChannel = SocketChannel.open(socketAddress);
         socketChannel.configureBlocking(false);
-        socketChannel.finishConnect();
         channelContext = new ChannelContext<>(protocolHandler, socketChannel);
         socketChannel.register(selector, SelectionKey.OP_READ, channelContext);
 
@@ -64,6 +63,10 @@ public class SocketClient extends SocketProcesser implements Closeable {
             channelContext.write(ByteBuffer.wrap(message));
         }
         return this;
+    }
+
+    public boolean isOpen() throws IOException {
+        return channelContext.isOpen() && channelContext.getSocketChannel().finishConnect();
     }
 
     public void reConnect() throws IOException {

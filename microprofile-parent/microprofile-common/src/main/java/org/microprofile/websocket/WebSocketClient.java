@@ -85,6 +85,10 @@ public class WebSocketClient implements Closeable {
         channelContext.close();
     }
 
+    public boolean isOpen() throws IOException {
+        return socketClient.isOpen();
+    }
+
     /**
      * @return the channelContext
      */

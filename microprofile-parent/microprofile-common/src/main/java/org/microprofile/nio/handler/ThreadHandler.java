@@ -36,7 +36,6 @@ public class ThreadHandler<T> implements Runnable, Closeable {
             ByteBuffer byteBuffer = byteBufferQueue.poll();
             while (null != byteBuffer && !closed) {
                 ProtocolHandler<T> protocolHandler = channelContext.getProtocolHandler();
-                byteBuffer.flip();
                 cachedBuffer.put(byteBuffer);
                 try {
                     if (payloadLength <= cachedBuffer.remaining()) {

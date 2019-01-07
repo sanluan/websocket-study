@@ -14,8 +14,10 @@ public class NioClientTest {
 
     public static void main(String[] arg) throws InterruptedException, IOException {
         SocketClient socketClient = new SocketClient("127.0.0.1", 1000, null, new NioClientProtocolHandler());
-        new NioClientThread(socketClient).start();
-        Thread.sleep(1000);
+        socketClient.asyncListen();
+        while (!socketClient.isOpen()) {
+            Thread.sleep(100);
+        }
         for (int i = 0; i < 10000; i++) {
             byte[] randBytes = new byte[1000000];
             for (int j = 0; j < 1000000; j++) {
@@ -24,6 +26,7 @@ public class NioClientTest {
             socketClient.sendMessage(randBytes);
         }
         Thread.sleep(5000);
+        socketClient.close();
     }
 
 }
