@@ -11,7 +11,6 @@ import org.microprofile.common.buffer.MultiByteBuffer;
 
 public class ThreadHandler<T> implements Runnable, Closeable {
     private ChannelContext<T> channelContext;
-    private static ConcurrentLinkedQueue<ByteBuffer> recycleByteBufferQueue = new ConcurrentLinkedQueue<>();
     private ConcurrentLinkedQueue<ByteBuffer> byteBufferQueue = new ConcurrentLinkedQueue<>();
     private boolean running;
     private boolean closed;
@@ -41,13 +40,7 @@ public class ThreadHandler<T> implements Runnable, Closeable {
                 try {
                     if (payloadLength <= cachedBuffer.remaining()) {
                         protocolHandler.read(channelContext, cachedBuffer);
-                        if (cachedBuffer.hasRemaining()) {
-                            if (0 < payloadLength && 0 < cachedBuffer.size()) {
-                                cachedBuffer.clear(recycleByteBufferQueue).put(byteBuffer);
-                            }
-                        } else {
-                            cachedBuffer.clear(recycleByteBufferQueue);
-                        }
+                        cachedBuffer.clear();
                     }
                 } catch (IOException e) {
                     try {
@@ -84,7 +77,7 @@ public class ThreadHandler<T> implements Runnable, Closeable {
     }
 
     public ByteBuffer getByteBuffer() {
-        ByteBuffer byteBuffer = recycleByteBufferQueue.poll();
+        ByteBuffer byteBuffer = cachedBuffer.recycle();
         if (null == byteBuffer) {
             byteBuffer = ByteBuffer.allocateDirect(2048);
         } else {

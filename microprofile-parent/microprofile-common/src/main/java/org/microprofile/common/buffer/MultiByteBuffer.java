@@ -3,16 +3,16 @@ package org.microprofile.common.buffer;
 import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.InvalidMarkException;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedList;
-import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class MultiByteBuffer {
-    private List<ByteBuffer> byteBufferList = new LinkedList<>();
+    private static ConcurrentLinkedQueue<ByteBuffer> recycleByteBufferQueue = new ConcurrentLinkedQueue<>();
+    private LinkedList<ByteBuffer> byteBufferList = new LinkedList<>();
     private Map<Integer, Integer> startPositionMap = new HashMap<>();
-    private int position = 0, limit = 0, byteBufferIndex = 0, currentLimit = 0, mark = -1;
+    private int position = 0, limit = 0, index = 0, currentLimit = 0, mark = -1, indexMark = -1;
     private ByteBuffer byteBuffer;
 
     /**
@@ -27,27 +27,27 @@ public class MultiByteBuffer {
             throw new IndexOutOfBoundsException();
         }
         ByteBuffer byteBuffer = this.byteBuffer;
-        int byteBufferIndex = this.byteBufferIndex;
+        int index = this.index;
         if (i > position) {
             int currentLimit = this.currentLimit;
             while (i >= currentLimit) {
-                byteBuffer = byteBufferList.get(++byteBufferIndex);
+                byteBuffer = byteBufferList.get(++index);
                 currentLimit += byteBuffer.remaining();
             }
             return byteBuffer.get(i - currentLimit + byteBuffer.remaining());
         } else if (i < position) {
-            Integer start = startPositionMap.get(byteBufferIndex);
+            Integer start = startPositionMap.get(index);
             int lastLimit = null == start ? this.currentLimit - byteBuffer.limit()
                     : this.currentLimit - byteBuffer.limit() + start;
             while (i < lastLimit) {
-                byteBuffer = byteBufferList.get(--byteBufferIndex);
-                start = startPositionMap.get(byteBufferIndex);
+                byteBuffer = byteBufferList.get(--index);
+                start = startPositionMap.get(index);
                 lastLimit -= null == start ? byteBuffer.limit() : byteBuffer.limit() - start;
             }
             return byteBuffer.get(i - lastLimit + byteBuffer.remaining());
         } else {
             if (position == currentLimit) {
-                byteBuffer = byteBufferList.get(byteBufferIndex + 1);
+                byteBuffer = byteBufferList.get(index + 1);
             }
             return byteBuffer.get(byteBuffer.position());
         }
@@ -56,51 +56,8 @@ public class MultiByteBuffer {
     /**
      * @return
      */
-    public int position() {
-        return position;
-    }
-
-    /**
-     * @return
-     */
     public int limit() {
         return limit;
-    }
-
-    /**
-     * @param position
-     */
-    public void position(int position) {
-        if (0 > position || position > limit) {
-            throw new IllegalArgumentException();
-        }
-        boolean increase = position > this.position;
-        int length = increase ? position - this.position : this.position - position;
-        ByteBuffer currentByteBuffer = byteBuffer;
-        while (0 < length) {
-            Integer currentStart = null;
-            if (!increase) {
-                currentStart = startPositionMap.get(byteBufferIndex);
-            }
-            int temp = increase ? length - currentByteBuffer.remaining()
-                    : null == currentStart ? length - currentByteBuffer.position()
-                            : length - (currentByteBuffer.position() - currentStart);
-            if (0 < temp) {
-                if (increase) {
-                    currentByteBuffer.position(currentByteBuffer.limit());
-                    byteBufferIndex++;
-                } else {
-                    currentByteBuffer.position(null == currentStart ? 0 : currentStart);
-                    byteBufferIndex--;
-                }
-                byteBuffer = currentByteBuffer = byteBufferList.get(byteBufferIndex);
-            } else {
-                currentByteBuffer.position(currentByteBuffer.position() + (increase ? length : -length));
-            }
-            length = temp;
-        }
-        this.position = position;
-        this.currentLimit = position + currentByteBuffer.remaining();
     }
 
     /**
@@ -136,6 +93,10 @@ public class MultiByteBuffer {
      */
     public MultiByteBuffer mark() {
         mark = position;
+        indexMark = index;
+        if (null != byteBuffer) {
+            byteBuffer.mark();
+        }
         return this;
     }
 
@@ -143,11 +104,13 @@ public class MultiByteBuffer {
      * @return
      */
     public MultiByteBuffer reset() {
-        if (mark < 0) {
+        if (0 > mark) {
             throw new InvalidMarkException();
         }
-        position(mark);
-        mark = 0;
+        position = mark;
+        while (indexMark < index) {
+            byteBufferList.get(--index).reset();
+        }
         return this;
     }
 
@@ -159,8 +122,11 @@ public class MultiByteBuffer {
             if (position >= limit) {
                 throw new BufferUnderflowException();
             }
-            byteBufferIndex++;
-            byteBuffer = byteBufferList.get(byteBufferIndex);
+            index++;
+            byteBuffer = byteBufferList.get(index);
+            if (0 <= indexMark && indexMark <= index) {
+                byteBuffer.mark();
+            }
             currentLimit = position + byteBuffer.remaining();
         }
         position++;
@@ -211,18 +177,42 @@ public class MultiByteBuffer {
         return this;
     }
 
-    public MultiByteBuffer clear(Collection<ByteBuffer> recycleCollection) {
-        position = limit = byteBufferIndex = currentLimit = 0;
-        mark = -1;
-        byteBuffer = null;
-        if (!byteBufferList.isEmpty()) {
-            if (null != recycleCollection) {
-                recycleCollection.addAll(byteBufferList);
+    public MultiByteBuffer clear() {
+        mark = indexMark = -1;
+        if (0 < index) {
+            startPositionMap.clear();
+            if (position < limit) {
+                limit -= position;
+                position = 0;
+                currentLimit = byteBuffer.remaining();
+                while (0 < index) {
+                    index--;
+                    recycleByteBufferQueue.add(byteBufferList.remove());
+                }
+                int i = 0;
+                for (ByteBuffer byteBuffer : byteBufferList) {
+                    if (0 < byteBuffer.position()) {
+                        startPositionMap.put(i++, byteBuffer.position());
+                    }
+                }
+            } else {
+                position = limit = index = currentLimit = 0;
+                byteBuffer = null;
+                if (!byteBufferList.isEmpty()) {
+                    recycleByteBufferQueue.addAll(byteBufferList);
+                    byteBufferList.clear();
+                }
             }
-            byteBufferList.clear();
         }
-        startPositionMap.clear();
         return this;
+    }
+
+    public ByteBuffer recycle() {
+        return recycleByteBufferQueue.poll();
+    }
+
+    public void clearRecycle() {
+        recycleByteBufferQueue.clear();
     }
 
     public int size() {
@@ -233,15 +223,13 @@ public class MultiByteBuffer {
         StringBuilder sb = new StringBuilder();
         sb.append(getClass().getName());
         sb.append("[pos=");
-        sb.append(position());
+        sb.append(position);
         sb.append(" lim=");
-        sb.append(limit());
+        sb.append(limit);
         sb.append(" index=");
-        sb.append(byteBufferIndex);
+        sb.append(index);
         sb.append(" size =");
         sb.append(byteBufferList.size());
-        sb.append(" currentLimit =");
-        sb.append(currentLimit);
         sb.append("]");
         return sb.toString();
     }

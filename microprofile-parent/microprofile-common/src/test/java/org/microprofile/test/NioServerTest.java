@@ -29,7 +29,7 @@ class NioServerProtocolHandler implements ProtocolHandler<Object> {
         byteBuffer.get(dst);
         for (int i = 0; i < r; i++) {
             if (last != dst[i]) {
-                last = 0;
+                last = dst[i];
                 System.out.println("error");
             }
             last++;
