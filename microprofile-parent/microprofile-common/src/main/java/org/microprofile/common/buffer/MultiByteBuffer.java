@@ -3,13 +3,12 @@ package org.microprofile.common.buffer;
 import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.InvalidMarkException;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class MultiByteBuffer {
-    private static ConcurrentLinkedQueue<ByteBuffer> recycleByteBufferQueue = new ConcurrentLinkedQueue<>();
     private LinkedList<ByteBuffer> byteBufferList = new LinkedList<>();
     private Map<Integer, Integer> startPositionMap = new HashMap<>();
     private int position = 0, limit = 0, index = 0, currentLimit = 0, mark = -1, indexMark = -1;
@@ -177,7 +176,7 @@ public class MultiByteBuffer {
         return this;
     }
 
-    public MultiByteBuffer clear() {
+    public MultiByteBuffer clear(Collection<ByteBuffer> recycleCollection) {
         mark = indexMark = -1;
         if (0 < index) {
             startPositionMap.clear();
@@ -187,7 +186,11 @@ public class MultiByteBuffer {
                 currentLimit = byteBuffer.remaining();
                 while (0 < index) {
                     index--;
-                    recycleByteBufferQueue.add(byteBufferList.remove());
+                    if (null == recycleCollection) {
+                        byteBufferList.remove();
+                    } else {
+                        recycleCollection.add(byteBufferList.remove());
+                    }
                 }
                 int i = 0;
                 for (ByteBuffer byteBuffer : byteBufferList) {
@@ -199,20 +202,14 @@ public class MultiByteBuffer {
                 position = limit = index = currentLimit = 0;
                 byteBuffer = null;
                 if (!byteBufferList.isEmpty()) {
-                    recycleByteBufferQueue.addAll(byteBufferList);
+                    if (null != recycleCollection) {
+                        recycleCollection.addAll(byteBufferList);
+                    }
                     byteBufferList.clear();
                 }
             }
         }
         return this;
-    }
-
-    public ByteBuffer recycle() {
-        return recycleByteBufferQueue.poll();
-    }
-
-    public void clearRecycle() {
-        recycleByteBufferQueue.clear();
     }
 
     public int size() {

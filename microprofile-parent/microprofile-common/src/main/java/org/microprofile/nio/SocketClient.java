@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
-import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -25,10 +24,8 @@ public class SocketClient extends SocketProcesser implements Closeable {
             throws IOException {
         super(pool, protocolHandler);
         SocketChannel socketChannel = SocketChannel.open(socketAddress);
-        socketChannel.configureBlocking(false);
         channelContext = new ChannelContext<>(protocolHandler, socketChannel);
-        socketChannel.register(selector, SelectionKey.OP_READ, channelContext);
-
+        register(socketChannel.configureBlocking(false), channelContext);
     }
 
     public void listen() throws IOException {
@@ -70,7 +67,7 @@ public class SocketClient extends SocketProcesser implements Closeable {
     }
 
     public void reConnect() throws IOException {
-        if (channelContext.isOpen()) {
+        if (!channelContext.isOpen()) {
             channelContext.getSocketChannel().connect(channelContext.getSocketChannel().getRemoteAddress());
         }
     }

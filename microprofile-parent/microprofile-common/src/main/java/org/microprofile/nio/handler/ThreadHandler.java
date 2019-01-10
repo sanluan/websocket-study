@@ -10,6 +10,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import org.microprofile.common.buffer.MultiByteBuffer;
 
 public class ThreadHandler<T> implements Runnable, Closeable {
+    private static ConcurrentLinkedQueue<ByteBuffer> recycleByteBufferQueue = new ConcurrentLinkedQueue<>();
     private ChannelContext<T> channelContext;
     private ConcurrentLinkedQueue<ByteBuffer> byteBufferQueue = new ConcurrentLinkedQueue<>();
     private boolean running;
@@ -40,7 +41,7 @@ public class ThreadHandler<T> implements Runnable, Closeable {
                 try {
                     if (payloadLength <= cachedBuffer.remaining()) {
                         protocolHandler.read(channelContext, cachedBuffer);
-                        cachedBuffer.clear();
+                        cachedBuffer.clear(recycleByteBufferQueue);
                     }
                 } catch (IOException e) {
                     try {
@@ -77,7 +78,7 @@ public class ThreadHandler<T> implements Runnable, Closeable {
     }
 
     public ByteBuffer getByteBuffer() {
-        ByteBuffer byteBuffer = cachedBuffer.recycle();
+        ByteBuffer byteBuffer = recycleByteBufferQueue.poll();
         if (null == byteBuffer) {
             byteBuffer = ByteBuffer.allocateDirect(2048);
         } else {
