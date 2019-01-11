@@ -11,17 +11,20 @@ public class ChannelContext<T> implements Closeable {
     private ThreadHandler<T> threadHandler;
     private boolean closed;
     private T attachment;
+    private static int connectionsCount = 0;
 
     public ChannelContext(ProtocolHandler<T> protocolHandler, SocketChannel socketChannel) {
         this.socketChannel = socketChannel;
         this.protocolHandler = protocolHandler;
         this.threadHandler = new ThreadHandler<>(this);
+        connectionsCount++;
     }
 
     @Override
     public void close() throws IOException {
         if (!closed) {
             closed = true;
+            connectionsCount--;
             threadHandler.close();
             protocolHandler.close(this);
         }
@@ -46,7 +49,13 @@ public class ChannelContext<T> implements Closeable {
         return i;
     }
 
-    public int read(ByteBuffer byteBuffer) throws IOException {
+    public int read(ByteBuffer byteBuffer, int maxPending) throws IOException {
+        while (0 < maxPending && ThreadHandler.isBusy(maxPending)) {
+            try {
+                Thread.sleep(300);
+            } catch (InterruptedException e) {
+            }
+        }
         return socketChannel.read(byteBuffer);
     }
 
@@ -113,16 +122,16 @@ public class ChannelContext<T> implements Closeable {
     }
 
     /**
-     * @return
-     */
-    public int getPayloadLength() {
-        return threadHandler.getPayloadLength();
-    }
-
-    /**
      * @param payloadLength
      */
     public void setPayloadLength(int payloadLength) {
         this.threadHandler.setPayloadLength(payloadLength);
+    }
+
+    /**
+     * @return the connectionsCount
+     */
+    public static int getConnectionsCount() {
+        return connectionsCount;
     }
 }

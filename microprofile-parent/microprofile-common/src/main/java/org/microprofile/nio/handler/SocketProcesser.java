@@ -9,16 +9,22 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.util.Iterator;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public abstract class SocketProcesser implements Closeable {
     protected Selector selector;
     protected ExecutorService pool;
     protected ProtocolHandler<?> protocolHandler;
+    protected int maxPending;
 
-    public SocketProcesser(ExecutorService pool, ProtocolHandler<?> protocolHandler) throws IOException {
+    public SocketProcesser(ExecutorService pool, ProtocolHandler<?> protocolHandler, int maxPending) throws IOException {
         this.selector = Selector.open();
+        if (null == pool) {
+            pool = Executors.newFixedThreadPool(1);
+        }
         this.pool = pool;
         this.protocolHandler = protocolHandler;
+        this.maxPending = maxPending;
     }
 
     public void polling() throws IOException {
@@ -31,19 +37,20 @@ public abstract class SocketProcesser implements Closeable {
                     ChannelContext<?> channelContext = (ChannelContext<?>) key.attachment();
                     if (null != channelContext) {
                         try {
-                            ThreadHandler<?> threadHandler = channelContext.getThreadHandler();
-                            ByteBuffer byteBuffer = threadHandler.getByteBuffer();
-                            int n = channelContext.read(byteBuffer);
+                            ByteBuffer byteBuffer = ThreadHandler.getByteBuffer();
+                            int n = channelContext.read(byteBuffer, maxPending);
                             while (0 < n) {
                                 byteBuffer.flip();
-                                if (threadHandler.addByteBuffer(byteBuffer)) {
-                                    pool.execute(threadHandler);
+                                if (channelContext.getThreadHandler().addByteBuffer(byteBuffer)) {
+                                    pool.execute(channelContext.getThreadHandler());
                                 }
-                                byteBuffer = threadHandler.getByteBuffer();
-                                n = channelContext.read(byteBuffer);
+                                byteBuffer = ThreadHandler.getByteBuffer();
+                                n = channelContext.read(byteBuffer, maxPending);
                             }
                             if (-1 == n) {
                                 channelContext.close();
+                            } else {
+                                ThreadHandler.recycle(byteBuffer);
                             }
                         } catch (Exception ex) {
                             channelContext.close();
@@ -56,6 +63,14 @@ public abstract class SocketProcesser implements Closeable {
 
     public void register(SelectableChannel selectableChannel, ChannelContext<?> channelContext) throws ClosedChannelException {
         selectableChannel.register(selector, SelectionKey.OP_READ, channelContext);
+    }
+
+    /**
+     * @param maxPending
+     *            the maxPending to set
+     */
+    public void setMaxPending(int maxPending) {
+        this.maxPending = maxPending;
     }
 
     @Override

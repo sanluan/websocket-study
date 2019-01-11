@@ -17,6 +17,7 @@ public class ThreadHandler<T> implements Runnable, Closeable {
     private boolean closed;
     private MultiByteBuffer cachedBuffer = new MultiByteBuffer();
     private int payloadLength = 0;
+    private static int pendingCount = 0;
     private Lock lock = new ReentrantLock();
 
     public ThreadHandler(ChannelContext<T> channelContext) {
@@ -25,7 +26,12 @@ public class ThreadHandler<T> implements Runnable, Closeable {
 
     public boolean addByteBuffer(ByteBuffer byteBuffer) {
         byteBufferQueue.add(byteBuffer);
+        pendingCount++;
         return !running;
+    }
+
+    public static boolean isBusy(int maxPending) {
+        return maxPending < pendingCount;
     }
 
     @Override
@@ -36,6 +42,7 @@ public class ThreadHandler<T> implements Runnable, Closeable {
             lock.unlock();
             ByteBuffer byteBuffer = byteBufferQueue.poll();
             while (null != byteBuffer && !closed) {
+                pendingCount--;
                 ProtocolHandler<T> protocolHandler = channelContext.getProtocolHandler();
                 cachedBuffer.put(byteBuffer);
                 try {
@@ -58,13 +65,6 @@ public class ThreadHandler<T> implements Runnable, Closeable {
     }
 
     /**
-     * @return the payloadLength
-     */
-    public int getPayloadLength() {
-        return payloadLength;
-    }
-
-    /**
      * @param payloadLength
      *            the payloadLength to set
      */
@@ -77,7 +77,11 @@ public class ThreadHandler<T> implements Runnable, Closeable {
         closed = true;
     }
 
-    public ByteBuffer getByteBuffer() {
+    public static void recycle(ByteBuffer byteBuffer) {
+        recycleByteBufferQueue.add(byteBuffer);
+    }
+
+    public static ByteBuffer getByteBuffer() {
         ByteBuffer byteBuffer = recycleByteBufferQueue.poll();
         if (null == byteBuffer) {
             byteBuffer = ByteBuffer.allocateDirect(2048);

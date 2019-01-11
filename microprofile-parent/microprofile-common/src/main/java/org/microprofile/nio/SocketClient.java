@@ -17,12 +17,17 @@ public class SocketClient extends SocketProcesser implements Closeable {
     protected ChannelContext<?> channelContext;
 
     public SocketClient(String host, int port, ExecutorService pool, ProtocolHandler<?> protocolHandler) throws IOException {
-        this(new InetSocketAddress(host, port), pool, protocolHandler);
+        this(host, port, pool, protocolHandler, 0);
     }
 
-    public SocketClient(SocketAddress socketAddress, ExecutorService pool, ProtocolHandler<?> protocolHandler)
+    public SocketClient(String host, int port, ExecutorService pool, ProtocolHandler<?> protocolHandler, int maxPending)
             throws IOException {
-        super(pool, protocolHandler);
+        this(new InetSocketAddress(host, port), pool, protocolHandler, maxPending);
+    }
+
+    public SocketClient(SocketAddress socketAddress, ExecutorService pool, ProtocolHandler<?> protocolHandler, int maxPending)
+            throws IOException {
+        super(pool, protocolHandler, maxPending);
         SocketChannel socketChannel = SocketChannel.open(socketAddress);
         channelContext = new ChannelContext<>(protocolHandler, socketChannel);
         register(socketChannel.configureBlocking(false), channelContext);

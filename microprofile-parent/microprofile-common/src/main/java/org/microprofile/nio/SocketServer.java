@@ -11,7 +11,6 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import org.microprofile.nio.handler.ChannelContext;
 import org.microprofile.nio.handler.ProtocolHandler;
@@ -24,31 +23,41 @@ import org.microprofile.nio.handler.SocketProcesser;
 public class SocketServer extends SocketProcesser implements Closeable {
     private ServerSocketChannel serverSocketChannel;
     private SocketAddress socketAddress;
-    private Selector acceptSelector;
-
-    public SocketServer(int port, ExecutorService pool, ProtocolHandler<?> protocolHandler) throws IOException {
-        this(null, port, pool, protocolHandler);
-    }
+    protected Selector acceptSelector;
+    protected int maxConnections;
 
     public SocketServer(String host, int port, ExecutorService pool, ProtocolHandler<?> protocolHandler) throws IOException {
-        this(null == host ? new InetSocketAddress(port) : new InetSocketAddress(host, port), pool, protocolHandler);
+        this(host, port, pool, protocolHandler, 0, 0);
     }
 
-    public SocketServer(SocketAddress socketAddress, ExecutorService pool, ProtocolHandler<?> protocolHandler)
+    public SocketServer(int port, ExecutorService pool, ProtocolHandler<?> protocolHandler) throws IOException {
+        this(null, port, pool, protocolHandler, 0, 0);
+    }
+
+    public SocketServer(int port, ExecutorService pool, ProtocolHandler<?> protocolHandler, int maxPending, int maxConnections)
             throws IOException {
-        super(pool, protocolHandler);
+        this(null, port, pool, protocolHandler, maxPending, maxConnections);
+    }
+
+    public SocketServer(String host, int port, ExecutorService pool, ProtocolHandler<?> protocolHandler, int maxPending,
+            int maxConnections) throws IOException {
+        this(null == host ? new InetSocketAddress(port) : new InetSocketAddress(host, port), pool, protocolHandler, maxPending,
+                maxConnections);
+    }
+
+    public SocketServer(SocketAddress socketAddress, ExecutorService pool, ProtocolHandler<?> protocolHandler, int maxPending,
+            int maxConnections) throws IOException {
+        super(pool, protocolHandler, maxPending);
         this.socketAddress = socketAddress;
         this.serverSocketChannel = ServerSocketChannel.open();
         this.acceptSelector = Selector.open();
+        this.maxConnections = maxConnections;
     }
 
     public void listen() throws IOException {
         ServerSocket serverSocket = serverSocketChannel.socket();
         serverSocket.bind(socketAddress);
         serverSocketChannel.configureBlocking(false);
-        if (null == pool) {
-            pool = Executors.newFixedThreadPool(1);
-        }
         StringBuilder sb = new StringBuilder("Thread [Server ");
         sb.append(socketAddress).append(" accepter]");
         new Thread(sb.toString()) {
@@ -72,10 +81,19 @@ public class SocketServer extends SocketProcesser implements Closeable {
                 while (keyIterator.hasNext()) {
                     SelectionKey key = keyIterator.next();
                     keyIterator.remove();
-                    if (key.isReadable()) {
+                    if (key.isAcceptable()) {
                         ServerSocketChannel server = (ServerSocketChannel) key.channel();
                         SocketChannel socketChannel = server.accept();
-                        register(socketChannel.configureBlocking(false), new ChannelContext<>(protocolHandler, socketChannel));
+                        if (null != socketChannel) {
+                            while (0 < maxConnections && ChannelContext.getConnectionsCount() > maxConnections) {
+                                try {
+                                    Thread.sleep(300);
+                                } catch (InterruptedException e) {
+                                }
+                            }
+                            register(socketChannel.configureBlocking(false),
+                                    new ChannelContext<>(protocolHandler, socketChannel));
+                        }
                     }
                 }
             }
