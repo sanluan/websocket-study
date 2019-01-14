@@ -30,26 +30,29 @@ class ServerMessageHandler implements MessageHandler {
     protected final Log log = LogFactory.getLog(getClass());
     private List<Session> sessionList = new ArrayList<Session>();
     int last = 0;
-    int count = 0;
+    long start = 0;
     int n = 0;
 
     @Override
     public void onMessage(byte[] message, Session session) throws IOException {
-        for (int i = 0; i < message.length; i++) {
+        int r = message.length;
+        for (int i = 0; i < r; i++) {
             if (last != message[i]) {
-                last = 0;
+                last = message[i];
                 System.out.println("error");
             }
             last++;
-            count++;
-            if (last == 126) {
+            if (last == 125) {
                 last = 0;
+                n++;
+                if (n % 100000 == 0) {
+                    System.out.println(n);
+                    if (1000000 == n) {
+                        System.out.println(System.currentTimeMillis() - start);
+                    }
+                }
             }
         }
-        last = 0;
-        count = 0;
-        n++;
-        System.out.println(session.getId() + "\t" + n + "\t" + System.currentTimeMillis());
     }
 
     @Override
@@ -62,6 +65,7 @@ class ServerMessageHandler implements MessageHandler {
     public void onOpen(Session session) throws IOException {
         sessionList.add(session);
         log.info(session.getId() + "\t connected!");
+        start = System.currentTimeMillis();
     }
 
     @Override

@@ -20,7 +20,6 @@ public class NioServerTest {
 
 class NioServerProtocolHandler implements ProtocolHandler<Object> {
     int last = 0;
-    int count = 0;
     int n = 0;
     long start = 0;
 
@@ -38,17 +37,14 @@ class NioServerProtocolHandler implements ProtocolHandler<Object> {
                 System.out.println("error");
             }
             last++;
-            count++;
-            if (last == 126) {
+            if (last == 10) {
                 last = 0;
-            }
-            if (count == 1000000) {
-                last = 0;
-                count = 0;
                 n++;
-                System.out.println(n);
-                if (10000 == n) {
-                    System.out.println(System.currentTimeMillis() - start);
+                if (n % 100000 == 0) {
+                    System.out.println(n);
+                    if (1000000 == n) {
+                        System.out.println(System.currentTimeMillis() - start);
+                    }
                 }
             }
         }

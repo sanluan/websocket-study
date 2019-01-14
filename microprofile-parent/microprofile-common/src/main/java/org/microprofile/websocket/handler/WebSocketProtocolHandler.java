@@ -72,14 +72,11 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
                             channelContext.close();
                             return;
                         }
-                    } else if (!message.isFin()) {
+                    } else {
                         if (0 != webSocketFrame.getCachedMessageLength()) {
                             webSocketFrame.setCachedOpCode(message.getOpCode());
                         }
                         webSocketFrame.addCachedMessage(message.getPayload());
-                    } else {
-                        channelContext.close();
-                        return;
                     }
                     message = MessageUtils.processMessage(multiByteBuffer, channelContext);
                 }

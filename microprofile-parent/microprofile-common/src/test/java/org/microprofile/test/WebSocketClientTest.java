@@ -20,13 +20,12 @@ public class WebSocketClientTest {
             while (!ws.isOpen()) {
                 Thread.sleep(100);
             }
-            for (int i = 0; i < 10000; i++) {
-                byte[] randBytes = new byte[1000000];
-                for (int j = 0; j < 1000000; j++) {
+            for (int i = 0; i < 1000000; i++) {
+                byte[] randBytes = new byte[125];
+                for (int j = 0; j < 125; j++) {
                     randBytes[j] = (byte) (j % 126);
                 }
                 ws.sendByte(randBytes);
-                Thread.sleep(50);
             }
             ws.close();
         } catch (IOException e) {

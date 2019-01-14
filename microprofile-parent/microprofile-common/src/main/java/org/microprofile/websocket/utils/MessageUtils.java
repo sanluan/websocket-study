@@ -83,9 +83,9 @@ public class MessageUtils {
                 }
             } else {
                 if (null == payloadLengthByte) {
-                    channelContext.setPayloadLength(payloadLen + 2);
+                    channelContext.setPayloadLength(payloadLen + (hasMask ? 6 : 2));
                 } else {
-                    channelContext.setPayloadLength(payloadLen + payloadLengthByte.length + 2);
+                    channelContext.setPayloadLength(payloadLen + payloadLengthByte.length + (hasMask ? 6 : 2));
                 }
                 byteBuffer.reset();
             }
