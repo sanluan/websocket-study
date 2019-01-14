@@ -15,7 +15,7 @@ public class WebSocketServerTest {
 
     public static void main(String[] args) throws InterruptedException {
         try {
-            WebSocketServer ws = new WebSocketServer(1000, 20, new ServerMessageHandler());
+            WebSocketServer ws = new WebSocketServer(1000, 20, new ServerMessageHandler(), 1000);
             log.info("启动。。。");
             ws.asyncListen();
             Thread.sleep(1000 * 1000);

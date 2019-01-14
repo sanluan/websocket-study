@@ -11,7 +11,8 @@ import org.microprofile.nio.handler.ProtocolHandler;
 public class NioServerTest {
 
     public static void main(String[] arg) throws IOException {
-        SocketServer socketServer = new SocketServer(1000, Executors.newFixedThreadPool(20), new NioServerProtocolHandler());
+        SocketServer socketServer = new SocketServer(1000, Executors.newFixedThreadPool(20), new NioServerProtocolHandler(),
+                100 * 1024 * 1024);
         socketServer.listen();
         socketServer.close();
     }
@@ -21,9 +22,13 @@ class NioServerProtocolHandler implements ProtocolHandler<Object> {
     int last = 0;
     int count = 0;
     int n = 0;
+    long start = 0;
 
     @Override
     public void read(ChannelContext<Object> channelContext, MultiByteBuffer byteBuffer) throws IOException {
+        if (0 == start) {
+            start = System.currentTimeMillis();
+        }
         int r = byteBuffer.remaining();
         byte[] dst = new byte[r];
         byteBuffer.get(dst);
@@ -42,6 +47,9 @@ class NioServerProtocolHandler implements ProtocolHandler<Object> {
                 count = 0;
                 n++;
                 System.out.println(n);
+                if (10000 == n) {
+                    System.out.println(System.currentTimeMillis() - start);
+                }
             }
         }
     }

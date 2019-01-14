@@ -29,7 +29,7 @@ public class SocketClient extends SocketProcesser implements Closeable {
             throws IOException {
         super(pool, protocolHandler, maxPending);
         SocketChannel socketChannel = SocketChannel.open(socketAddress);
-        channelContext = new ChannelContext<>(protocolHandler, socketChannel);
+        channelContext = new ChannelContext<>(protocolHandler, this, socketChannel);
         register(socketChannel.configureBlocking(false), channelContext);
     }
 

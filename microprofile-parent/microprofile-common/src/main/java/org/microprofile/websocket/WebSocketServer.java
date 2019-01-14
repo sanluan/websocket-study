@@ -11,16 +11,17 @@ import org.microprofile.websocket.handler.WebSocketProtocolHandler;
 public class WebSocketServer implements Closeable {
     private SocketServer socketServer;
 
-    public WebSocketServer(int port, int poolSize, MessageHandler messageHandler) throws IOException {
-        this(null, port, poolSize, messageHandler);
+    public WebSocketServer(int port, int poolSize, MessageHandler messageHandler, int maxPending) throws IOException {
+        this(null, port, poolSize, messageHandler, maxPending);
     }
 
-    public WebSocketServer(String host, int port, int poolSize, MessageHandler messageHandler) throws IOException {
+    public WebSocketServer(String host, int port, int poolSize, MessageHandler messageHandler, int maxPending)
+            throws IOException {
         if (null == messageHandler) {
             throw new IllegalArgumentException("messageHandler can't be null");
         }
         this.socketServer = new SocketServer(host, port, Executors.newFixedThreadPool(poolSize),
-                new WebSocketProtocolHandler(messageHandler));
+                new WebSocketProtocolHandler(messageHandler), maxPending);
     }
 
     public void listen() throws IOException {

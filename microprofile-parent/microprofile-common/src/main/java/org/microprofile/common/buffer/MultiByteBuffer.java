@@ -3,7 +3,6 @@ package org.microprofile.common.buffer;
 import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.InvalidMarkException;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
@@ -176,7 +175,7 @@ public class MultiByteBuffer {
         return this;
     }
 
-    public MultiByteBuffer clear(Collection<ByteBuffer> recycleCollection) {
+    public MultiByteBuffer clear() {
         mark = indexMark = -1;
         if (0 < index) {
             startPositionMap.clear();
@@ -186,11 +185,7 @@ public class MultiByteBuffer {
                 currentLimit = byteBuffer.remaining();
                 while (0 < index) {
                     index--;
-                    if (null == recycleCollection) {
-                        byteBufferList.remove();
-                    } else {
-                        recycleCollection.add(byteBufferList.remove());
-                    }
+                    byteBufferList.remove();
                 }
                 int i = 0;
                 for (ByteBuffer byteBuffer : byteBufferList) {
@@ -202,9 +197,6 @@ public class MultiByteBuffer {
                 position = limit = index = currentLimit = 0;
                 byteBuffer = null;
                 if (!byteBufferList.isEmpty()) {
-                    if (null != recycleCollection) {
-                        recycleCollection.addAll(byteBufferList);
-                    }
                     byteBufferList.clear();
                 }
             }

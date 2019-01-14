@@ -7,6 +7,8 @@ import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -16,7 +18,15 @@ public abstract class SocketProcesser implements Closeable {
     protected ExecutorService pool;
     protected ProtocolHandler<?> protocolHandler;
     protected int maxPending;
+    protected int pending = 0;
+    protected static final int BLOCK = 2048;
 
+    /**
+     * @param pool
+     * @param protocolHandler
+     * @param maxPending
+     * @throws IOException
+     */
     public SocketProcesser(ExecutorService pool, ProtocolHandler<?> protocolHandler, int maxPending) throws IOException {
         this.selector = Selector.open();
         if (null == pool) {
@@ -27,6 +37,9 @@ public abstract class SocketProcesser implements Closeable {
         this.maxPending = maxPending;
     }
 
+    /**
+     * @throws IOException
+     */
     public void polling() throws IOException {
         if (0 < selector.select()) {
             Iterator<SelectionKey> keyIterator = selector.selectedKeys().iterator();
@@ -35,32 +48,52 @@ public abstract class SocketProcesser implements Closeable {
                 keyIterator.remove();
                 if (key.isReadable()) {
                     ChannelContext<?> channelContext = (ChannelContext<?>) key.attachment();
+                    SocketChannel socketChannel = channelContext.getSocketChannel();
+                    ThreadHandler<?> threadHandler = channelContext.getThreadHandler();
                     if (null != channelContext) {
                         try {
-                            ByteBuffer byteBuffer = ThreadHandler.getByteBuffer();
-                            int n = channelContext.read(byteBuffer, maxPending);
+                            ByteBuffer byteBuffer = allocateAndWait();
+                            int n = socketChannel.read(byteBuffer);
                             while (0 < n) {
                                 byteBuffer.flip();
-                                if (channelContext.getThreadHandler().addByteBuffer(byteBuffer)) {
-                                    pool.execute(channelContext.getThreadHandler());
+                                if (threadHandler.addByteBuffer(byteBuffer)) {
+                                    pool.execute(threadHandler);
                                 }
-                                byteBuffer = ThreadHandler.getByteBuffer();
-                                n = channelContext.read(byteBuffer, maxPending);
+                                byteBuffer = allocateAndWait();
+                                n = socketChannel.read(byteBuffer);
                             }
                             if (-1 == n) {
                                 channelContext.close();
-                            } else {
-                                ThreadHandler.recycle(byteBuffer);
                             }
                         } catch (Exception ex) {
                             channelContext.close();
                         }
                     }
+                } else if (key.isAcceptable()) {
+                    ServerSocketChannel server = (ServerSocketChannel) key.channel();
+                    SocketChannel socketChannel = server.accept();
+                    register(socketChannel.configureBlocking(false), new ChannelContext<>(protocolHandler, this, socketChannel));
                 }
             }
         }
     }
 
+    public ByteBuffer allocateAndWait() {
+        while (0 < maxPending && maxPending < pending) {
+            try {
+                System.out.println("wait");
+                Thread.sleep(300);
+            } catch (InterruptedException e) {
+            }
+        }
+        return ByteBuffer.allocateDirect(BLOCK);
+    }
+
+    /**
+     * @param selectableChannel
+     * @param channelContext
+     * @throws ClosedChannelException
+     */
     public void register(SelectableChannel selectableChannel, ChannelContext<?> channelContext) throws ClosedChannelException {
         selectableChannel.register(selector, SelectionKey.OP_READ, channelContext);
     }
@@ -71,6 +104,20 @@ public abstract class SocketProcesser implements Closeable {
      */
     public void setMaxPending(int maxPending) {
         this.maxPending = maxPending;
+    }
+
+    /**
+     * 
+     */
+    public void add() {
+        pending++;
+    }
+
+    /**
+     * 
+     */
+    public void minus() {
+        pending--;
     }
 
     @Override

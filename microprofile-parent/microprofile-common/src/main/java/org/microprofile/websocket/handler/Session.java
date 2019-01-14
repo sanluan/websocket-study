@@ -3,7 +3,6 @@ package org.microprofile.websocket.handler;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Map;
-import java.util.UUID;
 
 import org.microprofile.common.constant.Constants;
 import org.microprofile.nio.handler.ChannelContext;
@@ -15,8 +14,8 @@ public class Session {
     private Map<String, String> headers;
     private String url;
 
-    public Session(ChannelContext<WebSocketFrame> channelContext) {
-        this.id = UUID.randomUUID().toString();
+    public Session(String id, ChannelContext<WebSocketFrame> channelContext) {
+        this.id = id;
         this.channelContext = channelContext;
     }
 

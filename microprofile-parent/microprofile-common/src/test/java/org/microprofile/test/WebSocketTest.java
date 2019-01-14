@@ -21,7 +21,7 @@ public class WebSocketTest {
     public void testWebsocket() throws IOException, InterruptedException {
 
         WebSocketTestHandler serverHandler = new WebSocketTestHandler();
-        WebSocketServer wss = new WebSocketServer(1000, 1, serverHandler);
+        WebSocketServer wss = new WebSocketServer(1000, 1, serverHandler, 1000);
         wss.asyncListen();
         WebSocketTestHandler clientHandler = new WebSocketTestHandler();
         WebSocketClient wsc = new WebSocketClient("localhost", 1000, "/", clientHandler);

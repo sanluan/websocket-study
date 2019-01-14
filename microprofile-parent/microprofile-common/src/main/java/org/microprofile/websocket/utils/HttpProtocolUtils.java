@@ -39,7 +39,7 @@ public class HttpProtocolUtils {
             byte[] key_sha1 = sha1(secKey + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
             StringBuilder sb = new StringBuilder(HTTP_WEBSOCKET_RESPONSE);
             sb.append(EncodeUtils.base64Encode(key_sha1)).append("\r\n\r\n");
-            session = new Session(channelContext);
+            session = new Session(channelContext.getId(), channelContext);
             session.setHeaders(headers);
             session.setUrl(url);
             channelContext.write(sb.toString());
@@ -56,7 +56,7 @@ public class HttpProtocolUtils {
         Map<String, String> headers = getHeaders(multiByteBuffer);
         String secKey = headers.get("Sec-WebSocket-Accept");
         if (null != secKey) {
-            session = new Session(channelContext);
+            session = new Session(channelContext.getId(), channelContext);
             session.setHeaders(headers);
             session.setUrl(null);
         }

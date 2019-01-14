@@ -11,7 +11,7 @@ public class FileServerTest {
 
             FileListener listener = new FileListener("D:/aaa/");
             FileEventHandler fileEventHandler = new FileEventHandler(listener.getLocalFileAdaptor());
-            WebSocketServer wss = new WebSocketServer(1000, 1, fileEventHandler.getRemoteMessageHandler(true));
+            WebSocketServer wss = new WebSocketServer(1000, 1, fileEventHandler.getRemoteMessageHandler(true), 1000);
             wss.asyncListen();
             listener.addEventHandler(fileEventHandler);
             listener.start();
