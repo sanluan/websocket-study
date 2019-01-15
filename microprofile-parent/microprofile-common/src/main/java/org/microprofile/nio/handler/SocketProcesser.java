@@ -18,8 +18,10 @@ public abstract class SocketProcesser implements Closeable {
     protected ExecutorService pool;
     protected ProtocolHandler<?> protocolHandler;
     protected int maxPending;
-    protected int pending = 0;
-    protected static final int BLOCK = 2048;
+    protected int pending;
+    protected int blockSize;
+
+    protected static final int DEFAULT_BLOCK_SIZE = 2048;
 
     /**
      * @param pool
@@ -28,6 +30,18 @@ public abstract class SocketProcesser implements Closeable {
      * @throws IOException
      */
     public SocketProcesser(ExecutorService pool, ProtocolHandler<?> protocolHandler, int maxPending) throws IOException {
+        this(pool, protocolHandler, maxPending, DEFAULT_BLOCK_SIZE);
+    }
+
+    /**
+     * @param pool
+     * @param protocolHandler
+     * @param maxPending
+     * @param blockSize
+     * @throws IOException
+     */
+    public SocketProcesser(ExecutorService pool, ProtocolHandler<?> protocolHandler, int maxPending, int blockSize)
+            throws IOException {
         this.selector = Selector.open();
         if (null == pool) {
             pool = Executors.newFixedThreadPool(1);
@@ -35,6 +49,7 @@ public abstract class SocketProcesser implements Closeable {
         this.pool = pool;
         this.protocolHandler = protocolHandler;
         this.maxPending = maxPending;
+        this.blockSize = blockSize;
     }
 
     /**
@@ -81,12 +96,11 @@ public abstract class SocketProcesser implements Closeable {
     public ByteBuffer allocateAndWait() {
         while (0 < maxPending && maxPending < pending) {
             try {
-                System.out.println("wait");
-                Thread.sleep(300);
+                Thread.sleep(100);
             } catch (InterruptedException e) {
             }
         }
-        return ByteBuffer.allocateDirect(BLOCK);
+        return ByteBuffer.allocateDirect(blockSize);
     }
 
     /**
@@ -111,6 +125,14 @@ public abstract class SocketProcesser implements Closeable {
      */
     public void add() {
         pending++;
+    }
+
+    /**
+     * @param blockSize
+     *            the blockSize to set
+     */
+    public void setBlockSize(int blockSize) {
+        this.blockSize = blockSize;
     }
 
     /**

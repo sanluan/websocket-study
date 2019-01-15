@@ -120,19 +120,20 @@ public class MultiByteBuffer {
         if (position >= currentLimit) {
             if (position >= limit) {
                 throw new BufferUnderflowException();
+            } else {
+                next();
             }
-            index++;
-            byteBuffer = byteBufferList.get(index);
-            if (0 <= indexMark && indexMark <= index) {
-                byteBuffer.mark();
-            }
-            currentLimit = position + byteBuffer.remaining();
-        }
-        if (currentLimit != position + byteBuffer.remaining()) {
-            System.out.println(1);
         }
         position++;
         return byteBuffer;
+    }
+
+    private void next() {
+        byteBuffer = byteBufferList.get(++index);
+        if (0 <= indexMark && indexMark <= index) {
+            byteBuffer.mark();
+        }
+        currentLimit = position + byteBuffer.remaining();
     }
 
     /**
@@ -151,32 +152,82 @@ public class MultiByteBuffer {
     }
 
     /**
-     * @param off
-     * @param len
-     * @param size
-     */
-    private static void checkBounds(int off, int len, int size) {
-        if (0 > (off | len | (off + len) | (size - (off + len)))) {
-            throw new IndexOutOfBoundsException();
-        }
-    }
-
-    /**
      * @param dst
      * @param offset
      * @param length
      * @return
      */
     public MultiByteBuffer get(byte[] dst, int offset, int length) {
-        checkBounds(offset, length, dst.length);
-        if (length > remaining()) {
+        int len = length - offset;
+        if (len > remaining()) {
             throw new BufferUnderflowException();
-        }
-        int end = offset + length;
-        for (int i = offset; i < end; i++) {
-            dst[i] = get();
+        } else {
+            while (len > byteBuffer.remaining()) {
+                len -= byteBuffer.remaining();
+                offset += byteBuffer.remaining();
+                byteBuffer.get(dst, offset, byteBuffer.remaining());
+                next();
+            }
+            if (0 < len) {
+                byteBuffer.get(dst, offset, len);
+            }
+            position += len;
         }
         return this;
+    }
+
+    public char getChar() {
+        return (char) ((get() << 8) | (get() & 0xff));
+    }
+
+    public char getChar(int index) {
+        return (char) ((get(index) << 8) | (get(index + 1) & 0xff));
+    }
+
+    public short getShort() {
+        return (short) ((get() << 8) | (get() & 0xff));
+    }
+
+    public short getShort(int index) {
+        return (short) ((get(index) << 8) | (get(index + 1) & 0xff));
+    }
+
+    public int getInt() {
+        return (((get()) << 24) | ((get() & 0xff) << 16) | ((get() & 0xff) << 8) | ((get() & 0xff)));
+    }
+
+    public int getInt(int index) {
+        return (((get(index)) << 24) | ((get(index + 1) & 0xff) << 16) | ((get(index + 2) & 0xff) << 8)
+                | ((get(index + 3) & 0xff)));
+    }
+
+    public long getLong() {
+        return ((((long) get()) << 56) | (((long) get() & 0xff) << 48) | (((long) get() & 0xff) << 40)
+                | (((long) get() & 0xff) << 32) | (((long) get() & 0xff) << 24) | (((long) get() & 0xff) << 16)
+                | (((long) get() & 0xff) << 8) | (((long) get() & 0xff)));
+    }
+
+    public long getLong(int index) {
+        return ((((long) get(index)) << 56) | (((long) get(index + 1) & 0xff) << 48) | (((long) get(index + 2) & 0xff) << 40)
+                | (((long) get(index + 3) & 0xff) << 32) | (((long) get(index + 4) & 0xff) << 24)
+                | (((long) get(index + 5) & 0xff) << 16) | (((long) get(index + 6) & 0xff) << 8)
+                | (((long) get(index + 7) & 0xff)));
+    }
+
+    public float getFloat() {
+        return Float.intBitsToFloat(getInt());
+    }
+
+    public float getFloat(int index) {
+        return Float.intBitsToFloat(getInt(index));
+    }
+
+    public double getDouble() {
+        return Double.longBitsToDouble(getLong());
+    }
+
+    public double getDouble(int index) {
+        return Double.longBitsToDouble(getLong(index));
     }
 
     public MultiByteBuffer clear() {

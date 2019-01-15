@@ -42,7 +42,7 @@ class ServerMessageHandler implements MessageHandler {
                 System.out.println("error");
             }
             last++;
-            if (last == 125) {
+            if (last == 1) {
                 last = 0;
                 n++;
                 if (n % 100000 == 0) {

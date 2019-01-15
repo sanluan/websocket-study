@@ -1,5 +1,7 @@
 package org.microprofile.websocket.handler;
 
+import java.nio.ByteBuffer;
+
 public class Message {
     public static final byte OPCODE_PART = 0X0;
     public static final byte OPCODE_STRING = 0X1;
@@ -10,15 +12,23 @@ public class Message {
     private final boolean fin;
     private final int rsv;
     private final byte opCode;
-    private final byte[] payload;
+    private final ByteBuffer payloadByteBuffer;
     private final int size;
 
-    public Message(boolean fin, int rsv, byte opCode, byte[] payload) {
+    public Message(boolean fin, int rsv, byte opCode, ByteBuffer payloadByteBuffer) {
         this.fin = fin;
         this.rsv = rsv;
         this.opCode = opCode;
-        this.payload = payload;
-        this.size = payload.length;
+        this.payloadByteBuffer = payloadByteBuffer;
+        this.size = payloadByteBuffer.remaining();
+    }
+
+    public Message(boolean fin, int rsv, byte opCode, byte[] data) {
+        this.fin = fin;
+        this.rsv = rsv;
+        this.opCode = opCode;
+        this.payloadByteBuffer = ByteBuffer.wrap(data);
+        this.size = payloadByteBuffer.remaining();
     }
 
     /**
@@ -42,11 +52,26 @@ public class Message {
         return this.opCode;
     }
 
+    public ByteBuffer put(byte[] data) {
+        return payloadByteBuffer.put(data);
+    }
+
+    public ByteBuffer put(byte data) {
+        return payloadByteBuffer.put(data);
+    }
+
     /**
      * @return
      */
     public byte[] getPayload() {
-        return this.payload;
+        return payloadByteBuffer.array();
+    }
+
+    /**
+     * @return the payloadByteBuffer
+     */
+    public ByteBuffer getPayloadByteBuffer() {
+        return payloadByteBuffer;
     }
 
     /**

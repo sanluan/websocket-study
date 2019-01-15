@@ -18,8 +18,8 @@ public class NioClientTest {
         while (!socketClient.isOpen()) {
             Thread.sleep(100);
         }
-        byte[] randBytes = new byte[10];
-        for (int j = 0; j < 10; j++) {
+        byte[] randBytes = new byte[125];
+        for (int j = 0; j < randBytes.length; j++) {
             randBytes[j] = (byte) (j % 126);
         }
         for (int i = 0; i < 1000000; i++) {

@@ -12,7 +12,7 @@ public class NioServerTest {
 
     public static void main(String[] arg) throws IOException {
         SocketServer socketServer = new SocketServer(1000, Executors.newFixedThreadPool(20), new NioServerProtocolHandler(),
-                100 * 1024 * 1024);
+                100 * 1024);
         socketServer.listen();
         socketServer.close();
     }
@@ -37,7 +37,7 @@ class NioServerProtocolHandler implements ProtocolHandler<Object> {
                 System.out.println("error");
             }
             last++;
-            if (last == 10) {
+            if (last == 125) {
                 last = 0;
                 n++;
                 if (n % 100000 == 0) {

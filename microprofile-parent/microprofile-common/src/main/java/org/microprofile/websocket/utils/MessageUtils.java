@@ -44,23 +44,30 @@ public class MessageUtils {
             byte b2 = byteBuffer.get();
             boolean hasMask = 0 < (b2 & 0x80);
             int payloadLen = (b2 & 0x7F);
-            byte[] payloadLengthByte = null;
+            int payloadLength;
             if (126 <= payloadLen) {
                 if (126 == payloadLen) {
-                    payloadLengthByte = new byte[2];
+                    if (2 <= byteBuffer.remaining()) {
+                        payloadLength = byteBuffer.getShort();
+                    } else {
+                        channelContext.setPayloadLength(4);
+                        byteBuffer.reset();
+                        return null;
+                    }
                 } else {
-                    payloadLengthByte = new byte[8];
+                    if (8 <= byteBuffer.remaining()) {
+                        byteBuffer.getInt();
+                        payloadLength = byteBuffer.getInt();
+                    } else {
+                        channelContext.setPayloadLength(10);
+                        byteBuffer.reset();
+                        return null;
+                    }
                 }
-                if (payloadLengthByte.length <= byteBuffer.remaining()) {
-                    byteBuffer.get(payloadLengthByte);
-                    payloadLen = byteArrayToInt(payloadLengthByte);
-                } else {
-                    channelContext.setPayloadLength(payloadLengthByte.length + 2);
-                    byteBuffer.reset();
-                    return null;
-                }
+            } else {
+                payloadLength = payloadLen;
             }
-            if (hasMask && payloadLen + 4 <= byteBuffer.remaining() || payloadLen <= byteBuffer.remaining()) {
+            if (hasMask && payloadLength + 4 <= byteBuffer.remaining() || payloadLength <= byteBuffer.remaining()) {
                 byte[] array = new byte[payloadLen];
                 if (hasMask) {
                     byte[] mask = new byte[4];
@@ -73,7 +80,7 @@ public class MessageUtils {
                 }
                 channelContext.setPayloadLength(0);
                 if (isControl(opCode)) {
-                    if (fin && 125 >= payloadLen) {
+                    if (fin && 125 >= payloadLength) {
                         return new Message(fin, rsv, opCode, array);
                     } else {
                         return new Message(fin, rsv, Message.OPCODE_CLOSE, array);
@@ -82,10 +89,10 @@ public class MessageUtils {
                     return new Message(fin, rsv, opCode, array);
                 }
             } else {
-                if (null == payloadLengthByte) {
+                if (126 <= payloadLen) {
                     channelContext.setPayloadLength(payloadLen + (hasMask ? 6 : 2));
                 } else {
-                    channelContext.setPayloadLength(payloadLen + payloadLengthByte.length + (hasMask ? 6 : 2));
+                    channelContext.setPayloadLength(payloadLen + 126 == payloadLen ? 2 : 8 + (hasMask ? 6 : 2));
                 }
                 byteBuffer.reset();
             }
@@ -93,36 +100,12 @@ public class MessageUtils {
         return null;
     }
 
-    public static String byte2bits(byte b) {
-        int z = b;
-        z |= 256;
-        String str = Integer.toBinaryString(z);
-        int len = str.length();
-        return str.substring(len - 8, len);
-    }
-
-    protected static int byteArrayToInt(byte[] b) throws IOException {
-        int shift = 0;
-        int result = 0;
-        for (int i = 0 + b.length - 1; i >= 0; --i) {
-            result += ((b[i] & 0xFF) << shift);
-            shift += 8;
-        }
-        return result;
-    }
-
     public static ByteBuffer wrapMessage(Message message, boolean masked, boolean first) {
-        int length = 0;
-        if (null != message.getPayload()) {
-            length = message.getPayload().length;
-        }
-        byte b = 0;
-        if (message.isFin()) {
-            b = (byte) (b - 128);
-        }
-        b = (byte) (b + (message.getRsv() << 4));
+        int length = message.getSize();
+        byte b = (byte) (message.isFin() ? -128 : 0);
+        b += (message.getRsv() << 4);
         if (first) {
-            b = (byte) (b + message.getOpCode());
+            b += message.getOpCode();
         }
         int headLenth = 1;
         byte b1;
@@ -149,24 +132,13 @@ public class MessageUtils {
             byteBuffer.put((byte) (length & 0xFF));
         } else {
             byteBuffer.put((byte) (0x7F | b1));
-            byteBuffer.put((byte) 0);
-            byteBuffer.put((byte) 0);
-            byteBuffer.put((byte) 0);
-            byteBuffer.put((byte) 0);
-            byteBuffer.put((byte) (length >>> 24));
-            byteBuffer.put((byte) (length >>> 16));
-            byteBuffer.put((byte) (length >>> 8));
-            byteBuffer.put((byte) (length & 0xFF));
+            byteBuffer.putInt(0);
+            byteBuffer.putInt(length);
         }
         if (masked) {
-            byte[] mask = generateMask();
-            byteBuffer.put(mask[0]);
-            byteBuffer.put(mask[1]);
-            byteBuffer.put(mask[2]);
-            byteBuffer.put(mask[3]);
+            byteBuffer.put(generateMask());
         }
-        byteBuffer.put(message.getPayload());
-        byteBuffer.flip();
+        byteBuffer.put(message.getPayloadByteBuffer()).flip();
         return byteBuffer;
     }
 }
