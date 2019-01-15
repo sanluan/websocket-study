@@ -109,6 +109,7 @@ public class MultiByteBuffer {
         while (indexMark < index) {
             byteBufferList.get(--index).reset();
         }
+        byteBuffer.reset();
         return this;
     }
 
@@ -126,6 +127,9 @@ public class MultiByteBuffer {
                 byteBuffer.mark();
             }
             currentLimit = position + byteBuffer.remaining();
+        }
+        if (currentLimit != position + byteBuffer.remaining()) {
+            System.out.println(1);
         }
         position++;
         return byteBuffer;

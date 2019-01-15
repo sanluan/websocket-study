@@ -30,7 +30,7 @@ public class WebSocketMessageTest {
                 if (Message.OPCODE_BYTE == message.getOpCode()) {
                     if (!Arrays.equals(randBytes, message.getPayload())) {
                         System.out.println("error");
-                    } 
+                    }
                 } else {
                     System.out.println("error");
                 }
