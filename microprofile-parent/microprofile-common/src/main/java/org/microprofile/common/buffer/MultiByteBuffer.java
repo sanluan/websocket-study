@@ -160,12 +160,12 @@ public class MultiByteBuffer {
             throw new BufferUnderflowException();
         } else {
             for (int i = offset; i < len; i++) {
-                if (position >= currentLimit) {
+                if (!byteBuffer.hasRemaining()) {
                     next();
                 }
-                position++;
                 dst[i] = byteBuffer.get();
             }
+            position += len;
         }
         return this;
     }
