@@ -20,8 +20,8 @@ public class WebSocketClientTest {
             while (!ws.isOpen()) {
                 Thread.sleep(100);
             }
-            byte[] randBytes = new byte[1];
-            for (int j = 0; j < 1; j++) {
+            byte[] randBytes = new byte[125];
+            for (int j = 0; j < randBytes.length; j++) {
                 randBytes[j] = (byte) (j % 126);
             }
             for (int i = 0; i < 1000000; i++) {
@@ -51,10 +51,12 @@ class ClientMessageHandler implements MessageHandler {
 
     @Override
     public void onOpen(Session session) throws IOException {
+        log.info(session.getId() + "\t connected!");
     }
 
     @Override
     public void onClose(Session session) throws IOException {
+        log.info(session.getId() + "\t closed!");
     }
 
 }

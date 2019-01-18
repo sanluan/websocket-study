@@ -9,7 +9,10 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -19,7 +22,10 @@ public abstract class SocketProcesser implements Closeable {
     protected ProtocolHandler<?> protocolHandler;
     protected int maxPending;
     protected int pending;
+    private ConcurrentLinkedQueue<ByteBuffer> recycleByteBufferQueue = new ConcurrentLinkedQueue<>();
     protected int blockSize;
+    protected List<Thread> threads = new ArrayList<>();;
+    protected boolean closed;
 
     protected static final int DEFAULT_BLOCK_SIZE = 2048;
 
@@ -50,44 +56,85 @@ public abstract class SocketProcesser implements Closeable {
         this.protocolHandler = protocolHandler;
         this.maxPending = maxPending;
         this.blockSize = blockSize;
+        if (0 < maxPending) {
+            StringBuilder sb = new StringBuilder("Thread [Selector ");
+            sb.append(selector.hashCode()).append(" cleaner]");
+            Thread clearThread = new Thread(sb.toString()) {
+                public void run() {
+                    while (!closed) {
+                        try {
+                            Thread.sleep(1 * 60 * 1000);
+                        } catch (InterruptedException e) {
+                        }
+                        clear();
+                    }
+                }
+            };
+            clearThread.start();
+            threads.add(clearThread);
+        }
     }
 
     /**
      * @throws IOException
      */
-    public void polling() throws IOException {
-        if (0 < selector.select()) {
-            Iterator<SelectionKey> keyIterator = selector.selectedKeys().iterator();
-            while (keyIterator.hasNext()) {
-                SelectionKey key = keyIterator.next();
-                keyIterator.remove();
-                if (key.isReadable()) {
-                    ChannelContext<?> channelContext = (ChannelContext<?>) key.attachment();
-                    SocketChannel socketChannel = channelContext.getSocketChannel();
-                    ThreadHandler<?> threadHandler = channelContext.getThreadHandler();
-                    if (null != channelContext) {
-                        try {
-                            ByteBuffer byteBuffer = allocateAndWait();
-                            int n = socketChannel.read(byteBuffer);
-                            while (0 < n) {
-                                byteBuffer.flip();
-                                if (threadHandler.addByteBuffer(byteBuffer)) {
-                                    pool.execute(threadHandler);
+    public void asyncListen() throws IOException {
+        Thread listenerThread = new Thread(getName()) {
+            public void run() {
+                try {
+                    if (!closed) {
+                        listen();
+                    }
+                } catch (IOException e) {
+                }
+            }
+        };
+        listenerThread.start();
+        threads.add(listenerThread);
+    }
+
+    /**
+     * @throws IOException
+     */
+    public void listen() throws IOException {
+        while (isOpen()) {
+            if (0 < selector.select()) {
+                Iterator<SelectionKey> keyIterator = selector.selectedKeys().iterator();
+                while (keyIterator.hasNext()) {
+                    SelectionKey key = keyIterator.next();
+                    keyIterator.remove();
+                    if (key.isReadable()) {
+                        ChannelContext<?> channelContext = (ChannelContext<?>) key.attachment();
+                        SocketChannel socketChannel = channelContext.getSocketChannel();
+                        ThreadHandler<?> threadHandler = channelContext.getThreadHandler();
+                        if (null != channelContext) {
+                            try {
+                                ByteBuffer byteBuffer = allocateAndWait();
+                                int n = socketChannel.read(byteBuffer);
+                                while (0 < n) {
+                                    byteBuffer.flip();
+                                    if (threadHandler.addByteBuffer(byteBuffer)) {
+                                        pool.execute(threadHandler);
+                                    }
+                                    byteBuffer = allocateAndWait();
+                                    n = socketChannel.read(byteBuffer);
                                 }
-                                byteBuffer = allocateAndWait();
-                                n = socketChannel.read(byteBuffer);
-                            }
-                            if (-1 == n) {
+
+                                if (-1 == n) {
+                                    channelContext.close();
+                                } else {
+                                    recycleByteBufferQueue.add(byteBuffer);
+                                }
+                            } catch (Exception ex) {
                                 channelContext.close();
                             }
-                        } catch (Exception ex) {
-                            channelContext.close();
                         }
+                    } else if (key.isAcceptable()) {
+                        ServerSocketChannel server = (ServerSocketChannel) key.channel();
+                        SocketChannel socketChannel = server.accept();
+                        register(socketChannel.configureBlocking(false),
+                                new ChannelContext<>(protocolHandler, this, socketChannel));
                     }
-                } else if (key.isAcceptable()) {
-                    ServerSocketChannel server = (ServerSocketChannel) key.channel();
-                    SocketChannel socketChannel = server.accept();
-                    register(socketChannel.configureBlocking(false), new ChannelContext<>(protocolHandler, this, socketChannel));
                 }
             }
         }
@@ -96,12 +143,22 @@ public abstract class SocketProcesser implements Closeable {
     public ByteBuffer allocateAndWait() {
         while (0 < maxPending && maxPending < pending) {
             try {
-                Thread.sleep(100);
+                Thread.sleep(50);
             } catch (InterruptedException e) {
             }
         }
-        return ByteBuffer.allocateDirect(blockSize);
+        ByteBuffer byteBuffer = recycleByteBufferQueue.poll();
+        if (null == byteBuffer) {
+            byteBuffer = ByteBuffer.allocateDirect(blockSize);
+        } else {
+            byteBuffer.clear();
+        }
+        return byteBuffer;
     }
+
+    public abstract boolean isOpen() throws IOException;
+
+    public abstract String getName() throws IOException;
 
     /**
      * @param selectableChannel
@@ -113,18 +170,24 @@ public abstract class SocketProcesser implements Closeable {
     }
 
     /**
-     * @param maxPending
-     *            the maxPending to set
-     */
-    public void setMaxPending(int maxPending) {
-        this.maxPending = maxPending;
-    }
-
-    /**
      * 
      */
     public void add() {
         pending++;
+    }
+
+    public void clear() {
+        int threshold = maxPending / 10;
+        while (0 >= pending && threshold < recycleByteBufferQueue.size()) {
+            recycleByteBufferQueue.poll();
+        }
+    }
+
+    /**
+     * @return the recycleByteBufferQueue
+     */
+    public ConcurrentLinkedQueue<ByteBuffer> getRecycleByteBufferQueue() {
+        return recycleByteBufferQueue;
     }
 
     /**
@@ -142,10 +205,18 @@ public abstract class SocketProcesser implements Closeable {
         pending--;
     }
 
+    public ProtocolHandler<?> getProtocolHandler() {
+        return protocolHandler;
+    }
+
     @Override
     public void close() throws IOException {
         if (selector.isOpen()) {
             selector.close();
+        }
+        closed = true;
+        for (Thread thread : threads) {
+            thread.interrupt();
         }
         if (null != pool && !pool.isShutdown()) {
             pool.shutdown();

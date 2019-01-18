@@ -3,6 +3,7 @@ package org.microprofile.common.buffer;
 import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
 import java.nio.InvalidMarkException;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
@@ -18,6 +19,21 @@ public class MultiByteBuffer {
      */
     public byte get() {
         return nextGetByteBuffer().get();
+    }
+
+    /**
+     * @param dst
+     * @return
+     */
+    public MultiByteBuffer get(byte[] dst) {
+        return get(dst, 0, dst.length);
+    }
+
+    /**
+     * @return
+     */
+    public final boolean hasRemaining() {
+        return position < limit;
     }
 
     public byte get(int i) {
@@ -49,13 +65,6 @@ public class MultiByteBuffer {
             }
             return byteBuffer.get(byteBuffer.position());
         }
-    }
-
-    /**
-     * @return
-     */
-    public int limit() {
-        return limit;
     }
 
     /**
@@ -109,7 +118,10 @@ public class MultiByteBuffer {
         while (indexMark < index) {
             byteBufferList.get(--index).reset();
         }
+        index = indexMark;
+        byteBuffer = byteBufferList.get(index);
         byteBuffer.reset();
+        currentLimit = position + byteBuffer.remaining();
         return this;
     }
 
@@ -130,25 +142,10 @@ public class MultiByteBuffer {
 
     private void next() {
         byteBuffer = byteBufferList.get(++index);
-        if (0 <= indexMark && indexMark <= index) {
+        if (indexMark < index) {
             byteBuffer.mark();
         }
         currentLimit = position + byteBuffer.remaining();
-    }
-
-    /**
-     * @param dst
-     * @return
-     */
-    public MultiByteBuffer get(byte[] dst) {
-        return get(dst, 0, dst.length);
-    }
-
-    /**
-     * @return
-     */
-    public final boolean hasRemaining() {
-        return position < limit;
     }
 
     /**
@@ -162,16 +159,54 @@ public class MultiByteBuffer {
         if (len > remaining()) {
             throw new BufferUnderflowException();
         } else {
-            while (len > byteBuffer.remaining()) {
-                len -= byteBuffer.remaining();
-                offset += byteBuffer.remaining();
-                byteBuffer.get(dst, offset, byteBuffer.remaining());
-                next();
+            for (int i = offset; i < len; i++) {
+                if (position >= currentLimit) {
+                    next();
+                }
+                position++;
+                dst[i] = byteBuffer.get();
             }
-            if (0 < len) {
-                byteBuffer.get(dst, offset, len);
+        }
+        return this;
+    }
+
+    /**
+     * @param recycleCollection
+     * @return
+     */
+    public MultiByteBuffer clear(Collection<ByteBuffer> recycleCollection) {
+        mark = indexMark = -1;
+        if (0 < index) {
+            startPositionMap.clear();
+            if (position < limit) {
+                limit -= position;
+                position = 0;
+                currentLimit = byteBuffer.remaining();
+                while (0 < index) {
+                    index--;
+                    if (null == recycleCollection) {
+                        byteBufferList.remove();
+                    } else {
+                        recycleCollection.add(byteBufferList.remove());
+                    }
+                }
+                int i = 0;
+                for (ByteBuffer byteBuffer : byteBufferList) {
+                    if (0 < byteBuffer.position()) {
+                        startPositionMap.put(i, byteBuffer.position());
+                    }
+                    i++;
+                }
+            } else {
+                position = limit = index = currentLimit = 0;
+                byteBuffer = null;
+                if (!byteBufferList.isEmpty()) {
+                    if (null != recycleCollection) {
+                        recycleCollection.addAll(byteBufferList);
+                    }
+                    byteBufferList.clear();
+                }
             }
-            position += len;
         }
         return this;
     }
@@ -230,37 +265,25 @@ public class MultiByteBuffer {
         return Double.longBitsToDouble(getLong(index));
     }
 
-    public MultiByteBuffer clear() {
-        mark = indexMark = -1;
-        if (0 < index) {
-            startPositionMap.clear();
-            if (position < limit) {
-                limit -= position;
-                position = 0;
-                currentLimit = byteBuffer.remaining();
-                while (0 < index) {
-                    index--;
-                    byteBufferList.remove();
-                }
-                int i = 0;
-                for (ByteBuffer byteBuffer : byteBufferList) {
-                    if (0 < byteBuffer.position()) {
-                        startPositionMap.put(i++, byteBuffer.position());
-                    }
-                }
-            } else {
-                position = limit = index = currentLimit = 0;
-                byteBuffer = null;
-                if (!byteBufferList.isEmpty()) {
-                    byteBufferList.clear();
-                }
-            }
-        }
-        return this;
-    }
-
+    /**
+     * @return
+     */
     public int size() {
         return byteBufferList.size();
+    }
+
+    /**
+     * @return
+     */
+    public int limit() {
+        return limit;
+    }
+
+    /**
+     * @return
+     */
+    public final int remaining() {
+        return limit - position;
     }
 
     public String toString() {
@@ -276,12 +299,5 @@ public class MultiByteBuffer {
         sb.append(byteBufferList.size());
         sb.append("]");
         return sb.toString();
-    }
-
-    /**
-     * @return
-     */
-    public final int remaining() {
-        return limit - position;
     }
 }

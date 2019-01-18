@@ -1,6 +1,8 @@
 package org.microprofile.test;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.Executors;
 
 import org.microprofile.common.buffer.MultiByteBuffer;
@@ -19,31 +21,32 @@ public class NioServerTest {
 }
 
 class NioServerProtocolHandler implements ProtocolHandler<Object> {
-    int last = 0;
-    int n = 0;
-    long start = 0;
+    Map<ChannelContext<Object>, State> map = new HashMap<>();
 
     @Override
     public void read(ChannelContext<Object> channelContext, MultiByteBuffer byteBuffer) throws IOException {
-        if (0 == start) {
-            start = System.currentTimeMillis();
+        State state = map.get(channelContext);
+        if (null == state) {
+            state = new State();
+            state.start = System.currentTimeMillis();
+            map.put(channelContext, state);
         }
         int r = byteBuffer.remaining();
         byte[] dst = new byte[r];
         byteBuffer.get(dst);
         for (int i = 0; i < r; i++) {
-            if (last != dst[i]) {
-                last = dst[i];
+            if (state.last != dst[i]) {
+                state.last = dst[i];
                 System.out.println("error");
             }
-            last++;
-            if (last == 125) {
-                last = 0;
-                n++;
-                if (n % 100000 == 0) {
-                    System.out.println(n);
-                    if (1000000 == n) {
-                        System.out.println(System.currentTimeMillis() - start);
+            state.last++;
+            if (state.last == 125) {
+                state.last = 0;
+                state.n++;
+                if (state.n % 100000 == 0) {
+                    System.out.println(state.n);
+                    if (1000000 == state.n) {
+                        System.out.println(System.currentTimeMillis() - state.start);
                     }
                 }
             }
@@ -53,5 +56,11 @@ class NioServerProtocolHandler implements ProtocolHandler<Object> {
     @Override
     public void close(ChannelContext<Object> channelContext) throws IOException {
 
+    }
+
+    public class State {
+        int last = 0;
+        int n = 0;
+        long start = 0;
     }
 }

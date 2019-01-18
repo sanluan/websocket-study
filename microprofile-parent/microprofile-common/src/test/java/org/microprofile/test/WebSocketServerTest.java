@@ -1,8 +1,8 @@
 package org.microprofile.test;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -28,27 +28,31 @@ public class WebSocketServerTest {
 
 class ServerMessageHandler implements MessageHandler {
     protected final Log log = LogFactory.getLog(getClass());
-    private List<Session> sessionList = new ArrayList<Session>();
-    int last = 0;
-    long start = 0;
-    int n = 0;
+    Map<Session, State> map = new HashMap<>();
+
+    public class State {
+        int last = 0;
+        int n = 0;
+        long start = 0;
+    }
 
     @Override
     public void onMessage(byte[] message, Session session) throws IOException {
+        State state = map.get(session);
         int r = message.length;
         for (int i = 0; i < r; i++) {
-            if (last != message[i]) {
-                last = message[i];
+            if (state.last != message[i]) {
+                state.last = message[i];
                 System.out.println("error");
             }
-            last++;
-            if (last == 1) {
-                last = 0;
-                n++;
-                if (n % 100000 == 0) {
-                    System.out.println(n);
-                    if (1000000 == n) {
-                        System.out.println(System.currentTimeMillis() - start);
+            state.last++;
+            if (state.last == 125) {
+                state.last = 0;
+                state.n++;
+                if (state.n % 100000 == 0) {
+                    System.out.println(state.n);
+                    if (1000000 == state.n) {
+                        System.out.println(System.currentTimeMillis() - state.start);
                     }
                 }
             }
@@ -63,14 +67,15 @@ class ServerMessageHandler implements MessageHandler {
 
     @Override
     public void onOpen(Session session) throws IOException {
-        sessionList.add(session);
         log.info(session.getId() + "\t connected!");
-        start = System.currentTimeMillis();
+        State state = new State();
+        state.start = System.currentTimeMillis();
+        map.put(session, state);
     }
 
     @Override
     public void onClose(Session session) throws IOException {
-        sessionList.remove(session);
+        map.remove(session);
         log.info(session.getId() + "\t closed!");
     }
 

@@ -42,28 +42,19 @@ public class SocketServer extends SocketProcesser implements Closeable {
         super(pool, protocolHandler, maxPending);
         this.socketAddress = socketAddress;
         this.serverSocketChannel = ServerSocketChannel.open();
-    }
-
-    public void listen() throws IOException {
         ServerSocket serverSocket = serverSocketChannel.socket();
         serverSocket.bind(socketAddress);
         serverSocketChannel.configureBlocking(false).register(selector, SelectionKey.OP_ACCEPT);
-        while (serverSocketChannel.isOpen()) {
-            polling();
-        }
     }
 
-    public void asyncListen() throws IOException {
+    public boolean isOpen() throws IOException {
+        return serverSocketChannel.isOpen();
+    }
+
+    public String getName() {
         StringBuilder sb = new StringBuilder("Thread [Server ");
         sb.append(socketAddress).append(" listener]");
-        new Thread(sb.toString()) {
-            public void run() {
-                try {
-                    listen();
-                } catch (IOException e) {
-                }
-            }
-        }.start();
+        return sb.toString();
     }
 
     @Override
@@ -72,10 +63,6 @@ public class SocketServer extends SocketProcesser implements Closeable {
             serverSocketChannel.close();
         }
         super.close();
-    }
-
-    public ProtocolHandler<?> getProtocolHandler() {
-        return protocolHandler;
     }
 
     public SocketAddress getSocketAddress() {

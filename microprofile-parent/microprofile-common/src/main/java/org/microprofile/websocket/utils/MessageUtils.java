@@ -36,39 +36,30 @@ public class MessageUtils {
 
     public static Message processMessage(MultiByteBuffer byteBuffer, ChannelContext<WebSocketFrame> channelContext)
             throws IOException {
-        if (2 <= byteBuffer.remaining()) {
+        int r = byteBuffer.remaining();
+        if (2 <= r) {
             byte b = byteBuffer.mark().get();
             boolean fin = 0 < (b & 0x80);
             int rsv = ((b & 0x70) >>> 4);
             byte opCode = (byte) (b & 0xF);
             byte b2 = byteBuffer.get();
             boolean hasMask = 0 < (b2 & 0x80);
-            int payloadLen = (b2 & 0x7F);
-            int payloadLength;
-            if (126 <= payloadLen) {
-                if (126 == payloadLen) {
-                    if (2 <= byteBuffer.remaining()) {
-                        payloadLength = byteBuffer.getShort();
-                    } else {
-                        channelContext.setPayloadLength(4);
-                        byteBuffer.reset();
-                        return null;
-                    }
+            int len = (b2 & 0x7F);
+            int headLenth = hasMask ? 6 : 2;
+            if (126 <= len) {
+                if (len == 126 && (headLenth += 2) <= r) {
+                    len = byteBuffer.getShort();
+                } else if (126 < len && (headLenth += 8) <= r) {
+                    byteBuffer.getInt();
+                    len = byteBuffer.getInt();
                 } else {
-                    if (8 <= byteBuffer.remaining()) {
-                        byteBuffer.getInt();
-                        payloadLength = byteBuffer.getInt();
-                    } else {
-                        channelContext.setPayloadLength(10);
-                        byteBuffer.reset();
-                        return null;
-                    }
+                    channelContext.setPayloadLength(headLenth);
+                    byteBuffer.reset();
+                    return null;
                 }
-            } else {
-                payloadLength = payloadLen;
             }
-            if (hasMask && payloadLength + 4 <= byteBuffer.remaining() || payloadLength <= byteBuffer.remaining()) {
-                byte[] array = new byte[payloadLen];
+            if (len + headLenth <= r) {
+                byte[] array = new byte[len];
                 if (hasMask) {
                     byte[] mask = new byte[4];
                     byteBuffer.get(mask).get(array);
@@ -80,34 +71,28 @@ public class MessageUtils {
                 }
                 channelContext.setPayloadLength(0);
                 if (isControl(opCode)) {
-                    if (fin && 125 >= payloadLength) {
+                    if (fin && 125 >= len) {
                         return new Message(fin, rsv, opCode, array);
-                    } else {
-                        return new Message(fin, rsv, Message.OPCODE_CLOSE, array);
                     }
                 } else {
                     return new Message(fin, rsv, opCode, array);
                 }
             } else {
-                if (126 <= payloadLen) {
-                    channelContext.setPayloadLength(payloadLen + (hasMask ? 6 : 2));
-                } else {
-                    channelContext.setPayloadLength(payloadLen + 126 == payloadLen ? 2 : 8 + (hasMask ? 6 : 2));
-                }
+                channelContext.setPayloadLength(headLenth + len);
                 byteBuffer.reset();
             }
         }
         return null;
     }
 
-    public static ByteBuffer wrapMessage(Message message, boolean masked, boolean first) {
+    public static ByteBuffer wrapMessageHeader(Message message, boolean masked, boolean first, int bufferlength) {
         int length = message.getSize();
         byte b = (byte) (message.isFin() ? -128 : 0);
-        b += (message.getRsv() << 4);
+        b = (byte) (b + (message.getRsv() << 4));
         if (first) {
-            b += message.getOpCode();
+            b = (byte) (b + message.getOpCode());
         }
-        int headLenth = 1;
+        int headLenth = 2;
         byte b1;
         if (masked) {
             b1 = -128;
@@ -115,18 +100,18 @@ public class MessageUtils {
         } else {
             b1 = 0;
         }
-        if (length < 126) {
-            headLenth += 1;
-        } else if (length < 65536) {
-            headLenth += 3;
-        } else {
-            headLenth += 9;
+        if (126 <= length) {
+            if (length < 65536) {
+                headLenth += 2;
+            } else {
+                headLenth += 8;
+            }
         }
-        ByteBuffer byteBuffer = ByteBuffer.allocate(headLenth + length);
+        ByteBuffer byteBuffer = ByteBuffer.allocate(headLenth + bufferlength);
         byteBuffer.put(b);
-        if (length < 126) {
+        if (126 > length) {
             byteBuffer.put((byte) (length | b1));
-        } else if (length < 65536) {
+        } else if (65536 > length) {
             byteBuffer.put((byte) (0x7E | b1));
             byteBuffer.put((byte) (length >>> 8));
             byteBuffer.put((byte) (length & 0xFF));
@@ -138,6 +123,11 @@ public class MessageUtils {
         if (masked) {
             byteBuffer.put(generateMask());
         }
+        return byteBuffer;
+    }
+
+    public static ByteBuffer wrapMessage(Message message, boolean masked, boolean first) {
+        ByteBuffer byteBuffer = wrapMessageHeader(message, masked, first, message.getSize());
         byteBuffer.put(message.getPayloadByteBuffer()).flip();
         return byteBuffer;
     }

@@ -1,12 +1,14 @@
 package org.microprofile.test;
 
 import java.nio.ByteBuffer;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.microprofile.common.buffer.MultiByteBuffer;
 
 public class MultiByteBufferTest2 {
 
     public static void main(String[] args) {
+        ConcurrentLinkedQueue<ByteBuffer> recycleByteBufferQueue = new ConcurrentLinkedQueue<>();
         MultiByteBuffer multiByteBuffer = new MultiByteBuffer();
         for (int i = 0; i < 500; i++) {
             byte[] randBytes = new byte[1024];
@@ -20,7 +22,7 @@ public class MultiByteBufferTest2 {
             multiByteBuffer.get();
         }
         long a = System.nanoTime();
-        multiByteBuffer.clear();
+        multiByteBuffer.clear(recycleByteBufferQueue);
         System.out.println(System.nanoTime() - a);
         System.out.println(multiByteBuffer);
     }

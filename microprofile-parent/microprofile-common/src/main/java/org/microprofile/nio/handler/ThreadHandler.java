@@ -52,7 +52,7 @@ public class ThreadHandler<T> implements Runnable, Closeable {
                 try {
                     if (payloadLength <= cachedBuffer.remaining()) {
                         protocolHandler.read(channelContext, cachedBuffer);
-                        cachedBuffer.clear();
+                        cachedBuffer.clear(socketProcesser.getRecycleByteBufferQueue());
                     }
                 } catch (IOException e) {
                     try {

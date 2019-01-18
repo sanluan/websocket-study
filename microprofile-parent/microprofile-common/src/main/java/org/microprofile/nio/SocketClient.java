@@ -7,7 +7,6 @@ import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import org.microprofile.nio.handler.ChannelContext;
 import org.microprofile.nio.handler.ProtocolHandler;
@@ -33,27 +32,11 @@ public class SocketClient extends SocketProcesser implements Closeable {
         register(socketChannel.configureBlocking(false), channelContext);
     }
 
-    public void listen() throws IOException {
-        if (null == pool) {
-            pool = Executors.newFixedThreadPool(1);
-        }
-        while (channelContext.isOpen()) {
-            polling();
-        }
-    }
-
-    public void asyncListen() throws IOException {
+    public String getName() throws IOException {
         StringBuilder sb = new StringBuilder("Thread [Client ");
         sb.append(channelContext.getSocketChannel().getLocalAddress()).append(" to server ")
                 .append(channelContext.getSocketChannel().getRemoteAddress()).append(" listener]");
-        new Thread(sb.toString()) {
-            public void run() {
-                try {
-                    listen();
-                } catch (IOException e) {
-                }
-            }
-        }.start();
+        return sb.toString();
     }
 
     public SocketClient sendMessage(String message) throws IOException {

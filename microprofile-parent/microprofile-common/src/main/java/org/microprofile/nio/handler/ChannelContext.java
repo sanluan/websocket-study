@@ -52,7 +52,6 @@ public class ChannelContext<T> implements Closeable {
                     throw new IOException();
                 } else {
                     try {
-                        System.out.println("wait");
                         Thread.sleep(100);
                     } catch (InterruptedException e) {
                     }
