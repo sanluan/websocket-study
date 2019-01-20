@@ -74,7 +74,7 @@ public class FileListener implements FileAlterationListener {
         if (null != eventHandlers) {
             String filePath = localFileAdaptor.getRelativeFilePath(file);
             for (EventHandler eventHandler : eventHandlers) {
-                eventHandler.handle(new FileEvent(eventType, filePath, file.length()));
+                eventHandler.handle(new FileEvent(eventType, filePath, file.length(), file.lastModified()));
             }
         }
     }

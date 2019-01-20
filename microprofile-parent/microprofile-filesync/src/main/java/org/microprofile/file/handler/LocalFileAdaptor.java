@@ -15,6 +15,8 @@ import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.apache.commons.io.FileUtils;
 import org.microprofile.common.utils.EncodeUtils;
@@ -26,6 +28,8 @@ public class LocalFileAdaptor {
     private String basePath;
     private int blockSize;
     private boolean running = true;
+
+    private Map<String, FileChecksumCache> cache = new HashMap<>();
 
     public LocalFileAdaptor(String basePath, int blockSize) {
         super();
@@ -40,7 +44,7 @@ public class LocalFileAdaptor {
      */
     public void fileChecksum(Session session, RemoteMessageHandler remoteMessageHandler) {
         try {
-            Files.walkFileTree(Paths.get(basePath), new ChecksumFilesVisitor(remoteMessageHandler, session, this));
+            Files.walkFileTree(Paths.get(basePath), new ChecksumFilesVisitor(remoteMessageHandler, cache, session, this));
         } catch (IOException e) {
         }
     }
@@ -68,7 +72,7 @@ public class LocalFileAdaptor {
      * @param start
      * @return file length
      */
-    public long createFile(String filePath, byte[] data, int start) {
+    public File createFile(String filePath, byte[] data, int start) {
         File file = getFile(filePath);
         if (file.exists() && file.isDirectory()) {
             file.delete();
@@ -83,13 +87,13 @@ public class LocalFileAdaptor {
             }
         } else {
             try (RandomAccessFile raf = new RandomAccessFile(file, "rw"); FileLock lock = raf.getChannel().lock()) {
-                raf.setLength(data.length - start);
+                raf.seek(data.length - start);
                 raf.write(data, start, data.length - start);
             } catch (IOException e) {
                 e.printStackTrace();
             }
         }
-        return file.length();
+        return file;
     }
 
     /**
@@ -101,7 +105,7 @@ public class LocalFileAdaptor {
      * @param startIndex
      * @return file length
      */
-    public long modifyFile(String filePath, long fileSize, int blockSize, int blockIndex, byte[] data, int startIndex) {
+    public File modifyFile(String filePath, long fileSize, int blockSize, int blockIndex, byte[] data, int startIndex) {
         File file = getFile(filePath);
         if (file.exists() && file.isDirectory()) {
             file.delete();
@@ -114,39 +118,39 @@ public class LocalFileAdaptor {
         } catch (IOException e) {
             e.printStackTrace();
         }
-        return file.length();
+        return file;
     }
 
     /**
      * @param filePath
      * @return file length
      */
-    public long deleteFile(String filePath) {
+    public File deleteFile(String filePath) {
         File file = getFile(filePath);
         FileUtils.deleteQuietly(file);
-        return file.length();
+        return file;
     }
 
     /**
      * @param filePath
      * @return file length
      */
-    public long createDirectory(String filePath) {
+    public File createDirectory(String filePath) {
         File file = getFile(filePath);
         file.mkdirs();
-        return file.length();
+        return file;
     }
 
     /**
      * @param filePath
      * @return file length
      */
-    public long deleteDirectory(String filePath) {
+    public File deleteDirectory(String filePath) {
         File file = getFile(filePath);
         if (file.exists() && file.isDirectory()) {
             FileUtils.deleteQuietly(file);
         }
-        return file.length();
+        return file;
     }
 
     /**
@@ -188,14 +192,50 @@ public class LocalFileAdaptor {
         running = false;
     }
 
+    private static class FileChecksumCache {
+        private FileChecksum fileChecksum;
+        private long lastModify;
+
+        /**
+         * @return the fileChecksum
+         */
+        public FileChecksum getFileChecksum() {
+            return fileChecksum;
+        }
+
+        /**
+         * @param fileChecksum
+         *            the fileChecksum to set
+         */
+        public void setFileChecksum(FileChecksum fileChecksum) {
+            this.fileChecksum = fileChecksum;
+        }
+
+        /**
+         * @return the lastModify
+         */
+        public long getLastModify() {
+            return lastModify;
+        }
+
+        /**
+         * @param lastModify
+         *            the lastModify to set
+         */
+        public void setLastModify(long lastModify) {
+            this.lastModify = lastModify;
+        }
+    }
+
     private static class ChecksumFilesVisitor extends SimpleFileVisitor<Path> {
 
         private RemoteMessageHandler remoteMessageHandler;
         private Session session;
+        private Map<String, FileChecksumCache> cache;
         private LocalFileAdaptor localFileAdaptor;
 
-        public ChecksumFilesVisitor(RemoteMessageHandler remoteMessageHandler, Session session,
-                LocalFileAdaptor localFileAdaptor) {
+        public ChecksumFilesVisitor(RemoteMessageHandler remoteMessageHandler, Map<String, FileChecksumCache> cache,
+                Session session, LocalFileAdaptor localFileAdaptor) {
             this.remoteMessageHandler = remoteMessageHandler;
             this.session = session;
             this.localFileAdaptor = localFileAdaptor;
@@ -219,21 +259,29 @@ public class LocalFileAdaptor {
         public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) {
             if (localFileAdaptor.isRunning()) {
                 File f = file.toFile();
-                FileChecksum fileChecksum = new FileChecksum(localFileAdaptor.getRelativeFilePath(f), false, attrs.size());
-                if (0 < attrs.size() && attrs.size() < localFileAdaptor.getBlockSize() * 100) {
-                    try (FileInputStream fin = new FileInputStream(f)) {
-                        MappedByteBuffer byteBuffer = fin.getChannel().map(FileChannel.MapMode.READ_ONLY, 0, attrs.size());
-                        byte[] checksum = EncodeUtils.md2(byteBuffer);
-                        if (null != checksum) {
-                            fileChecksum.setChecksum(checksum);
-                            remoteMessageHandler.sendFileChecksum(session, fileChecksum);
+                String relativeFilePath = localFileAdaptor.getRelativeFilePath(f);
+                FileChecksum fileChecksum;
+                FileChecksumCache fileChecksumCache = cache.get(relativeFilePath);
+                if (null == fileChecksumCache || fileChecksumCache.getLastModify() != f.lastModified()) {
+                    fileChecksum = new FileChecksum(relativeFilePath, false, attrs.size());
+                    if (0 < attrs.size() && attrs.size() < localFileAdaptor.getBlockSize() * 100) {
+                        try (FileInputStream fin = new FileInputStream(f)) {
+                            MappedByteBuffer byteBuffer = fin.getChannel().map(FileChannel.MapMode.READ_ONLY, 0, attrs.size());
+                            fileChecksum.setChecksum(EncodeUtils.md2(byteBuffer));
+                        } catch (FileNotFoundException e) {
+                        } catch (Exception e) {
                         }
-                    } catch (FileNotFoundException e) {
-                    } catch (Exception e) {
                     }
+                    if (null == fileChecksumCache) {
+                        fileChecksumCache = new FileChecksumCache();
+                    }
+                    fileChecksumCache.setLastModify(f.lastModified());
+                    fileChecksumCache.setFileChecksum(fileChecksum);
+                    cache.put(relativeFilePath, fileChecksumCache);
                 } else {
-                    remoteMessageHandler.sendFileChecksum(session, fileChecksum);
+                    fileChecksum = fileChecksumCache.getFileChecksum();
                 }
+                remoteMessageHandler.sendFileChecksum(session, fileChecksum);
                 return FileVisitResult.CONTINUE;
             } else {
                 return FileVisitResult.TERMINATE;

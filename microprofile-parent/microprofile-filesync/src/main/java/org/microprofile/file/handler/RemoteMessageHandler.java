@@ -11,6 +11,10 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.logging.Log;
@@ -51,9 +55,12 @@ public class RemoteMessageHandler implements MessageHandler {
     private static int LENGTH_INT = 4;
     private static int LENGTH_LONG = 8;
     private boolean master = false;
+    private Lock lock = new ReentrantLock();
 
     private EventHandler eventHandler;
     private LocalFileAdaptor localFileAdaptor;
+    private Map<String, FileBlockChecksumCache> cache = new HashMap<>();
+    private ExecutorService pool = Executors.newSingleThreadExecutor();
 
     /**
      * @return the sessionMap
@@ -91,55 +98,43 @@ public class RemoteMessageHandler implements MessageHandler {
         int startIndex = HEADER_LENGTH + filePathLength;
         if (startIndex <= payload.length) {
             String filePath = new String(Arrays.copyOfRange(payload, HEADER_LENGTH, startIndex));
-            long cacheFileSize = 0;
-            long fileSize = 0;
-            int blockSize = -1;
-            int blockIndex = 0;
-            if (0 == header || 1 == header) {
-                fileSize = EncodeUtils.bype2Long(Arrays.copyOfRange(payload, startIndex, startIndex + LENGTH_LONG));
-                startIndex += LENGTH_LONG;
-                blockSize = EncodeUtils.bype2Int(Arrays.copyOfRange(payload, startIndex, startIndex + LENGTH_INT));
-                startIndex += LENGTH_INT;
-                blockIndex = EncodeUtils.bype2Int(Arrays.copyOfRange(payload, startIndex, startIndex + LENGTH_INT));
-                startIndex += LENGTH_INT;
-            }
             EventType eventType = null;
+            File file;
             switch (header) {
             case 0:
-                if (-1 == blockSize) {
-                    cacheFileSize = localFileAdaptor.createFile(filePath, payload, startIndex);
-                } else {
-                    cacheFileSize = localFileAdaptor.modifyFile(filePath, fileSize, blockSize, blockIndex, payload, startIndex);
-                }
-                if (localFileAdaptor.getFile(filePath).exists()) {
-                    eventType = EventType.FILE_MODIFY;
-                } else {
-                    eventType = EventType.FILE_CREATE;
-                }
-                break;
             case 1:
+                long fileSize = EncodeUtils.bype2Long(Arrays.copyOfRange(payload, startIndex, startIndex + LENGTH_LONG));
+                startIndex += LENGTH_LONG;
+                int blockSize = EncodeUtils.bype2Int(Arrays.copyOfRange(payload, startIndex, startIndex + LENGTH_INT));
+                startIndex += LENGTH_INT;
+                int blockIndex = EncodeUtils.bype2Int(Arrays.copyOfRange(payload, startIndex, startIndex + LENGTH_INT));
+                startIndex += LENGTH_INT;
                 if (localFileAdaptor.getFile(filePath).exists()) {
                     eventType = EventType.FILE_MODIFY;
                 } else {
                     eventType = EventType.FILE_CREATE;
                 }
-                cacheFileSize = localFileAdaptor.modifyFile(filePath, fileSize, blockSize, blockIndex, payload, startIndex);
+                if (0 == header && -1 == blockSize) {
+                    file = localFileAdaptor.createFile(filePath, payload, startIndex);
+                } else {
+                    file = localFileAdaptor.modifyFile(filePath, fileSize, blockSize, blockIndex, payload, startIndex);
+                }
                 break;
             case 2:
                 eventType = EventType.FILE_DELETE;
-                cacheFileSize = localFileAdaptor.deleteFile(filePath);
+                file = localFileAdaptor.deleteFile(filePath);
                 break;
             case 3:
                 eventType = EventType.DIRECTORY_CREATE;
-                cacheFileSize = localFileAdaptor.createDirectory(filePath);
+                file = localFileAdaptor.createDirectory(filePath);
                 break;
-            case 4:
+            default:
                 eventType = EventType.DIRECTORY_DELETE;
-                cacheFileSize = localFileAdaptor.deleteDirectory(filePath);
+                file = localFileAdaptor.deleteDirectory(filePath);
                 break;
             }
             if (null != eventType) {
-                eventHandler.cache(new FileEvent(eventType, filePath, cacheFileSize));
+                eventHandler.cache(new FileEvent(eventType, filePath, file.length(), file.lastModified()));
             }
         }
     }
@@ -153,8 +148,9 @@ public class RemoteMessageHandler implements MessageHandler {
                 File file = localFileAdaptor.getFile(filePath);
                 if (fileChecksum.isDirectory()) {
                     if (!file.exists()) {
-                        long fileSize = localFileAdaptor.createDirectory(filePath);
-                        eventHandler.cache(new FileEvent(EventType.DIRECTORY_CREATE, filePath, fileSize));
+                        file = localFileAdaptor.createDirectory(filePath);
+                        eventHandler
+                                .cache(new FileEvent(EventType.DIRECTORY_CREATE, filePath, file.length(), file.lastModified()));
                     }
                 } else {
                     if (file.exists() && !file.isDirectory()) {
@@ -177,7 +173,7 @@ public class RemoteMessageHandler implements MessageHandler {
                         }
                     } else if (!file.exists() && 0 == fileChecksum.getFileSize()) {
                         file.createNewFile();
-                        eventHandler.cache(new FileEvent(EventType.FILE_CREATE, filePath, 0));
+                        eventHandler.cache(new FileEvent(EventType.FILE_CREATE, filePath, 0, file.lastModified()));
                     } else {
                         result = new FileChecksumResult(filePath, false);
                     }
@@ -312,29 +308,42 @@ public class RemoteMessageHandler implements MessageHandler {
                             } catch (IOException e) {
                             }
                         } else {
-                            List<BlockChecksum> blockChecksumList = new LinkedList<>();
-                            int blocks = (int) (fileSize / blockSize);
-                            for (int i = 0; i <= blocks; i++) {
-                                try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
-                                    FileChannel channel = raf.getChannel();
-                                    if (i == blocks) {
-                                        int lastBlockSize = (int) (fileSize % blockSize);
-                                        if (0 != lastBlockSize) {
+                            lock.lock();
+                            FileBlockChecksumCache fileBlockChecksumCache = cache.get(filePath);
+                            List<BlockChecksum> blockChecksumList;
+                            if (null == fileBlockChecksumCache || fileBlockChecksumCache.getLastModify() != file.lastModified()) {
+                                blockChecksumList = new LinkedList<>();
+                                int blocks = (int) (fileSize / blockSize);
+                                for (int i = 0; i <= blocks; i++) {
+                                    try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
+                                        FileChannel channel = raf.getChannel();
+                                        if (i == blocks) {
+                                            int lastBlockSize = (int) (fileSize % blockSize);
+                                            if (0 != lastBlockSize) {
+                                                MappedByteBuffer byteBuffer = channel.map(FileChannel.MapMode.READ_ONLY,
+                                                        i * blockSize, lastBlockSize);
+                                                blockChecksumList.add(new BlockChecksum(i, EncodeUtils.md2(byteBuffer)));
+                                            }
+                                        } else {
                                             MappedByteBuffer byteBuffer = channel.map(FileChannel.MapMode.READ_ONLY,
-                                                    i * blockSize, lastBlockSize);
+                                                    i * blockSize, blockSize);
                                             blockChecksumList.add(new BlockChecksum(i, EncodeUtils.md2(byteBuffer)));
                                         }
-                                    } else {
-                                        MappedByteBuffer byteBuffer = channel.map(FileChannel.MapMode.READ_ONLY, i * blockSize,
-                                                blockSize);
-                                        blockChecksumList.add(new BlockChecksum(i, EncodeUtils.md2(byteBuffer)));
+                                    } catch (FileNotFoundException e) {
+                                        blockChecksumList.clear();
+                                    } catch (IOException e) {
                                     }
-                                } catch (FileNotFoundException e) {
-                                    blockChecksumList.clear();
-                                } catch (IOException e) {
-                                    e.printStackTrace();
                                 }
+                                if (null == fileBlockChecksumCache) {
+                                    fileBlockChecksumCache = new FileBlockChecksumCache();
+                                }
+                                fileBlockChecksumCache.setBlockChecksumList(blockChecksumList);
+                                fileBlockChecksumCache.setLastModify(file.lastModified());
+                                cache.put(filePath, fileBlockChecksumCache);
+                            } else {
+                                blockChecksumList = fileBlockChecksumCache.getBlockChecksumList();
                             }
+                            lock.unlock();
                             if (!blockChecksumList.isEmpty()) {
                                 sendBlockchecksumList(session, filePath, fileSize, blockSize, blockChecksumList);
                             }
@@ -395,9 +404,7 @@ public class RemoteMessageHandler implements MessageHandler {
         log.info(session.getId() + "\t connected!");
         RemoteMessageHandler remoteMessageHandler = this;
         if (master) {
-            StringBuilder sb = new StringBuilder("Thread [Client ");
-            sb.append(session.getId()).append(" file sync task]");
-            new Thread() {
+            pool.execute(new Runnable() {
                 public void run() {
                     try {
                         Thread.sleep(1000 * 2);
@@ -405,7 +412,7 @@ public class RemoteMessageHandler implements MessageHandler {
                     } catch (InterruptedException e) {
                     }
                 }
-            }.start();
+            });
         }
     }
 
@@ -555,5 +562,40 @@ public class RemoteMessageHandler implements MessageHandler {
         payload[0] = code;
         System.arraycopy(EncodeUtils.short2Byte((short) pathByte.length), 0, payload, 1, LENGTH_SHORT);
         System.arraycopy(pathByte, 0, payload, HEADER_LENGTH, pathByte.length);
+    }
+
+    private static class FileBlockChecksumCache {
+        private List<BlockChecksum> blockChecksumList;
+        private long lastModify;
+
+        /**
+         * @return the lastModify
+         */
+        public long getLastModify() {
+            return lastModify;
+        }
+
+        /**
+         * @param lastModify
+         *            the lastModify to set
+         */
+        public void setLastModify(long lastModify) {
+            this.lastModify = lastModify;
+        }
+
+        /**
+         * @return the blockChecksumList
+         */
+        public List<BlockChecksum> getBlockChecksumList() {
+            return blockChecksumList;
+        }
+
+        /**
+         * @param blockChecksumList
+         *            the blockChecksumList to set
+         */
+        public void setBlockChecksumList(List<BlockChecksum> blockChecksumList) {
+            this.blockChecksumList = blockChecksumList;
+        }
     }
 }
