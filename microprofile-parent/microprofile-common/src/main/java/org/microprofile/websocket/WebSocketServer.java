@@ -24,6 +24,10 @@ public class WebSocketServer implements Closeable {
                 new WebSocketProtocolHandler(messageHandler), maxPending);
     }
 
+    public boolean isOpen() throws IOException {
+        return socketServer.isOpen();
+    }
+
     public void listen() throws IOException {
         socketServer.listen();
     }
