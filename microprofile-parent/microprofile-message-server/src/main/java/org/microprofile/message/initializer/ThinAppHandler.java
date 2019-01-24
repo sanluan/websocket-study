@@ -5,7 +5,7 @@ import org.apache.commons.logging.LogFactory;
 import org.microprofile.message.ThinMessageServer;
 import org.microprofile.websocket.handler.MessageHandler;
 
-public abstract class ThinAppHandler implements MessageHandler{
+public abstract class ThinAppHandler implements MessageHandler {
     protected String appPath;
     protected ThinMessageServer messageServer;
     protected final Log log = LogFactory.getLog(getClass());
@@ -19,7 +19,7 @@ public abstract class ThinAppHandler implements MessageHandler{
         return this;
     }
 
-    public ThinMessageServer getHttpServer() {
+    public ThinMessageServer getMessageServer() {
         return messageServer;
     }
 

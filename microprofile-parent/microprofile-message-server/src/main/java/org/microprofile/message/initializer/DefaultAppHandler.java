@@ -90,9 +90,9 @@ public class DefaultAppHandler extends ThinAppHandler {
         }
         int sindex;
         String temp;
-        if (null == handler && 0 < (sindex = path.lastIndexOf("/"))) {
+        if (null == handler && -1 < (sindex = path.lastIndexOf("/"))) {
             handler = dirMappings.get((temp = path.substring(0, sindex + 1)));
-            while (null == handler && 0 < (sindex = temp.lastIndexOf("/", temp.length() - 2))) {
+            while (null == handler && -1 < (sindex = temp.lastIndexOf("/", temp.length() - 2))) {
                 handler = dirMappings.get((temp = temp.substring(0, sindex + 1)));
             }
         }

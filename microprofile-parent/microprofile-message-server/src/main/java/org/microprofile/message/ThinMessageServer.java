@@ -15,7 +15,7 @@ import org.microprofile.websocket.handler.Session;
 
 public class ThinMessageServer implements MessageHandler {
     protected final Log log = LogFactory.getLog(getClass());
-    public final static String SERVER_ROOT_PATH = "webapps";
+    public final static String SERVER_ROOT_PATH = "apps";
     public final static String WEBAPP_ROOT_PATH = "ROOT";
     private Map<String, ThinAppHandler> handlerMap = new HashMap<>();
     private ThinAppHandler defaultHandler;
@@ -31,7 +31,7 @@ public class ThinMessageServer implements MessageHandler {
             if (file.isDirectory()) {
                 for (File app : file.listFiles()) {
                     if (app.isDirectory()) {
-                        load(SERVER_ROOT_PATH, app.getName());
+                        load(app.getName());
                     }
                 }
             }
@@ -67,6 +67,11 @@ public class ThinMessageServer implements MessageHandler {
         ws.close();
     }
 
+    public void unLoad(String path) {
+        handlerMap.get(path).shutdown();
+        handlerMap.remove(path);
+    }
+
     public void load(String path) {
         load(path, null);
     }
@@ -82,7 +87,12 @@ public class ThinMessageServer implements MessageHandler {
             handler.setAppPath(appPath);
             handler.setMessageServer(this);
             handler.init();
-            String contextPath = getContextPath(path);
+            String contextPath;
+            if (WEBAPP_ROOT_PATH.equals(path)) {
+                contextPath = "/";
+            } else {
+                contextPath = "/" + path;
+            }
             if ("/".equals(contextPath)) {
                 defaultHandler = handler;
             }
@@ -93,30 +103,25 @@ public class ThinMessageServer implements MessageHandler {
         }
     }
 
-    public String getContextPath(String path) {
-        if (WEBAPP_ROOT_PATH.equals(path)) {
-            return "/";
-        } else {
-            return "/" + path;
-        }
-    }
-
     private ThinAppHandler getHandler(Session session) {
-        String url = session.getUrl();
-        String contentPath;
-        if (null != url && !url.startsWith("/")) {
-            int index = url.indexOf("/", 1);
-            if (0 < index) {
-                contentPath = url.substring(0, index);
-                session.setUrl(url.substring(index));
+        String contextPath = session.getContextPath();
+        if (null == contextPath) {
+            String url = session.getUrl();
+            if (null != url && url.startsWith("/")) {
+                int index = url.indexOf("/", 1);
+                if (0 < index) {
+                    contextPath = url.substring(0, index);
+                    session.setUrl(url.substring(index));
+                } else {
+                    contextPath = "/";
+                }
             } else {
-                contentPath = "/";
+                contextPath = "/";
             }
-        } else {
-            contentPath = "/";
+            session.setContextPath(contextPath);
         }
-        ThinAppHandler handler = handlerMap.get(contentPath);
-        if (null == handler && "/".equals(contentPath)) {
+        ThinAppHandler handler = handlerMap.get(contextPath);
+        if (null == handler && "/".equals(contextPath)) {
             handler = defaultHandler;
         }
         return handler;

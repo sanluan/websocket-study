@@ -13,6 +13,7 @@ public class Session {
     private ChannelContext<WebSocketFrame> channelContext;
     private Map<String, String> headers;
     private String url;
+    private String contextPath;
 
     public Session(String id, ChannelContext<WebSocketFrame> channelContext) {
         this.id = id;
@@ -101,6 +102,20 @@ public class Session {
      */
     public void setUrl(String url) {
         this.url = url;
+    }
+
+    /**
+     * @return the contextPath
+     */
+    public String getContextPath() {
+        return contextPath;
+    }
+
+    /**
+     * @param contextPath the contextPath to set
+     */
+    public void setContextPath(String contextPath) {
+        this.contextPath = contextPath;
     }
 
     /**
