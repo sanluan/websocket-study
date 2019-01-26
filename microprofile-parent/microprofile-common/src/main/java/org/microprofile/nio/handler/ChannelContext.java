@@ -105,7 +105,7 @@ public class ChannelContext<T> implements Closeable {
      * @return the closed
      */
     public boolean isOpen() {
-        return socketChannel.isOpen();
+        return socketChannel.isOpen() && socketChannel.isConnected();
     }
 
     /**

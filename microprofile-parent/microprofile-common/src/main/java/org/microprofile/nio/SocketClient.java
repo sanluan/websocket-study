@@ -51,7 +51,7 @@ public class SocketClient extends SocketProcesser implements Closeable {
     }
 
     public boolean isOpen() throws IOException {
-        return channelContext.isOpen() && channelContext.getSocketChannel().finishConnect();
+        return channelContext.isOpen();
     }
 
     public void reConnect() throws IOException {
