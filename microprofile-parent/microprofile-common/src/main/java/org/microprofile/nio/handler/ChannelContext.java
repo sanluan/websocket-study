@@ -11,6 +11,8 @@ public class ChannelContext<T> implements Closeable {
     private SocketChannel socketChannel;
     private ProtocolHandler<T> protocolHandler;
     private ThreadHandler<T> threadHandler;
+    private SocketProcesser socketProcesser;
+    private boolean ssl;
     private boolean closed;
     private T attachment;
 
@@ -18,11 +20,15 @@ public class ChannelContext<T> implements Closeable {
      * @param protocolHandler
      * @param socketProcesser
      * @param socketChannel
+     * @param ssl
      */
-    public ChannelContext(ProtocolHandler<T> protocolHandler, SocketProcesser socketProcesser, SocketChannel socketChannel) {
+    public ChannelContext(ProtocolHandler<T> protocolHandler, SocketProcesser socketProcesser, SocketChannel socketChannel,
+            boolean ssl) {
         this.id = UUID.randomUUID().toString();
         this.socketChannel = socketChannel;
         this.protocolHandler = protocolHandler;
+        this.socketProcesser = socketProcesser;
+        this.ssl = ssl;
         this.threadHandler = new ThreadHandler<>(this, socketProcesser);
     }
 
@@ -45,6 +51,9 @@ public class ChannelContext<T> implements Closeable {
      */
     public int write(ByteBuffer src) throws IOException {
         int i = 0, j = 0;
+        if (ssl) {
+            src = socketProcesser.wrap(src);
+        }
         while (src.hasRemaining()) {
             i = socketChannel.write(src);
             if (i == 0) {

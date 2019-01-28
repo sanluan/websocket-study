@@ -2,6 +2,8 @@ package org.microprofile.test;
 
 import java.io.IOException;
 import java.net.URISyntaxException;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -14,21 +16,20 @@ public class WebSocketClientTest {
 
     public static void main(String[] args) throws InterruptedException, URISyntaxException {
         try {
-            WebSocketClient ws = new WebSocketClient("ws://localhost:1000", new ClientMessageHandler());
+            WebSocketClient ws = new WebSocketClient("wss://cms.publiccms.com/message/test/", new ClientMessageHandler());
             log.info("启动。。。");
             ws.asyncListen();
             while (!ws.isOpen()) {
                 Thread.sleep(100);
             }
-            byte[] randBytes = new byte[125];
-            for (int j = 0; j < randBytes.length; j++) {
-                randBytes[j] = (byte) (j % 126);
-            }
-            for (int i = 0; i < 1000000; i++) {
-                ws.sendByte(randBytes);
-            }
+            ws.sendString("u:");
+            Thread.sleep(10000);
             ws.close();
         } catch (IOException e) {
+            e.printStackTrace();
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        } catch (KeyManagementException e) {
             e.printStackTrace();
         }
     }

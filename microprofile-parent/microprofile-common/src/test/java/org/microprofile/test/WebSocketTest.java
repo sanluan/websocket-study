@@ -4,6 +4,8 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 
 import java.io.IOException;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
 import java.util.HashSet;
 import java.util.Random;
 import java.util.Set;
@@ -18,7 +20,7 @@ import org.microprofile.websocket.handler.Session;
 public class WebSocketTest {
 
     @Test
-    public void testWebsocket() throws IOException, InterruptedException {
+    public void testWebsocket() throws IOException, InterruptedException, KeyManagementException, NoSuchAlgorithmException {
 
         WebSocketTestHandler serverHandler = new WebSocketTestHandler();
         WebSocketServer wss = new WebSocketServer(1000, 1, serverHandler, 1000);

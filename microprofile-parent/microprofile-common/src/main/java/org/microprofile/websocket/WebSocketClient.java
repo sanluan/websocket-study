@@ -4,7 +4,11 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
 import java.util.concurrent.Executors;
+
+import javax.net.ssl.SSLContext;
 
 import org.microprofile.nio.SocketClient;
 import org.microprofile.nio.handler.ChannelContext;
@@ -18,28 +22,52 @@ public class WebSocketClient implements Closeable {
     private SocketClient socketClient;
     private ChannelContext<?> channelContext;
 
-    public WebSocketClient(String url, MessageHandler messageHandler) throws IOException, URISyntaxException {
-        this(new URI(url), messageHandler);
+    public WebSocketClient(String url, MessageHandler messageHandler)
+            throws IOException, URISyntaxException, NoSuchAlgorithmException, KeyManagementException {
+        this(new URI(url), messageHandler, null, false);
     }
 
-    public WebSocketClient(URI uri, MessageHandler messageHandler) throws IOException {
-        this(uri.getHost(), uri.getPort(), uri.getPath(), messageHandler);
+    public WebSocketClient(String url, MessageHandler messageHandler, SSLContext sslContext, boolean needClientAuth)
+            throws IOException, URISyntaxException, NoSuchAlgorithmException, KeyManagementException {
+        this(new URI(url), messageHandler, sslContext, needClientAuth);
+    }
+
+    public WebSocketClient(URI uri, MessageHandler messageHandler, SSLContext sslContext, boolean needClientAuth)
+            throws IOException, NoSuchAlgorithmException, KeyManagementException {
+        this(uri.getHost(), -1 == uri.getPort() ? "ws".equalsIgnoreCase(uri.getScheme()) ? 80 : 443 : uri.getPort(),
+                "wss".equalsIgnoreCase(uri.getScheme()), uri.getPath(), messageHandler, sslContext, needClientAuth);
+    }
+
+    public WebSocketClient(String host, int port, String path, MessageHandler messageHandler)
+            throws IOException, NoSuchAlgorithmException, KeyManagementException {
+        this(host, port, false, path, messageHandler, null, false);
     }
 
     /**
      * @param host
      * @param port
+     * @param ssl
      * @param path
      * @param messageHandler
+     * @param sslContext
+     * @param needClientAuth
      * @throws IOException
+     * @throws NoSuchAlgorithmException
+     * @throws KeyManagementException
      */
-    public WebSocketClient(String host, int port, String path, MessageHandler messageHandler) throws IOException {
+    public WebSocketClient(String host, int port, boolean ssl, String path, MessageHandler messageHandler, SSLContext sslContext,
+            boolean needClientAuth) throws IOException, NoSuchAlgorithmException, KeyManagementException {
         if (null == messageHandler) {
             throw new IllegalArgumentException("messageHandler can't be null");
         }
+        if (ssl && null == sslContext) {
+            sslContext = SSLContext.getInstance("SSL");
+            sslContext.init(null, null, null);
+        }
         socketClient = new SocketClient(host, port, Executors.newFixedThreadPool(1),
-                new WebSocketProtocolHandler(messageHandler, false));
+                new WebSocketProtocolHandler(messageHandler, false), sslContext, needClientAuth);
         channelContext = socketClient.getChannelContext();
+        socketClient.doHandShake(channelContext.getSocketChannel());
         channelContext.write(HttpProtocolUtils.getHandshake(host, port, path));
     }
 
