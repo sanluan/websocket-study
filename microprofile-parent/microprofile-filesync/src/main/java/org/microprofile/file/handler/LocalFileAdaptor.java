@@ -237,6 +237,7 @@ public class LocalFileAdaptor {
         public ChecksumFilesVisitor(RemoteMessageHandler remoteMessageHandler, Map<String, FileChecksumCache> cache,
                 Session session, LocalFileAdaptor localFileAdaptor) {
             this.remoteMessageHandler = remoteMessageHandler;
+            this.cache = cache;
             this.session = session;
             this.localFileAdaptor = localFileAdaptor;
         }

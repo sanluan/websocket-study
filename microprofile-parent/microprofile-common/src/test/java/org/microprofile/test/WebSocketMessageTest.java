@@ -24,7 +24,7 @@ public class WebSocketMessageTest {
             multiByteBuffer.put(byteBuffer);
             multiByteBuffer.put(message.getPayloadByteBuffer());
         }
-        ChannelContext<WebSocketFrame> channelContext = new ChannelContext<>(null, null, null, null);
+        ChannelContext<WebSocketFrame> channelContext = new ChannelContext<>(null, null, null, null, 1024);
         Message message = MessageUtils.processMessage(multiByteBuffer, channelContext);
         while (null != message) {
             if (message.isFin() && Message.OPCODE_BYTE == message.getOpCode()) {
