@@ -113,6 +113,7 @@ public class WebSocketClient implements Closeable {
 
     public void close() throws IOException {
         channelContext.close();
+        socketClient.close();
     }
 
     public boolean isOpen() throws IOException {

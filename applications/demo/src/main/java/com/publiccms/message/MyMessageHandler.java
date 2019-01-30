@@ -15,12 +15,12 @@ import org.microprofile.websocket.handler.Session;
 
 public class MyMessageHandler implements MessageHandler {
     protected final Log log = LogFactory.getLog(getClass());
-    @SuppressWarnings("unused")
     private ThinMessageServer server;
     Map<Integer, User> userMap = new HashMap<>();
     private ConcurrentLinkedQueue<Integer> userIdQueue = new ConcurrentLinkedQueue<>();
     private Map<String, User> sessionMap = new HashMap<>();
     private Session adminSession;
+    private Session session;
     private String password;
     private int i;
 
@@ -61,11 +61,40 @@ public class MyMessageHandler implements MessageHandler {
             case 'p': {
                 break;
             }
+            case 'l': {
+                if (null != adminSession && adminSession == session) {
+                    String[] paths = message.split(",");
+                    if (1 == paths.length) {
+                        server.load(paths[0]);
+                    } else if (2 == paths.length) {
+                        server.load(paths[0], paths[1]);
+                    } else {
+                        session.sendString("s:error path");
+                    }
+                } else {
+                    session.sendString("s:no auth");
+                }
+                break;
+            }
+            case 'd': {
+                if (null != adminSession && adminSession == session) {
+                    String[] paths = message.split(",");
+                    if (1 == paths.length) {
+                        server.unLoad(paths[0]);
+                    } else {
+                        session.sendString("s:error path");
+                    }
+                } else {
+                    session.sendString("s:no auth");
+                }
+                break;
+            }
             case 'b': {
                 if (null != adminSession && adminSession == session) {
-                    User user = sessionMap.remove(session.getId());
+                    int userId = Integer.parseInt(message);
+                    User user = userMap.remove(userId);
                     if (null != user) {
-                        userMap.remove(user.getId());
+                        sessionMap.remove(user.getSession().getId());
                         user.getSession().close();
                         session.sendString("s:bye to:" + message);
                     } else {
@@ -98,8 +127,31 @@ public class MyMessageHandler implements MessageHandler {
                 session.sendString("s:error message");
             }
         } else if (null != adminSession) {
-            User user = sessionMap.get(session.getId());
-            adminSession.sendString(user.getNickName() + ",编号" + user.getId() + " 说:" + message);
+            if (adminSession == session) {
+                int index = message.indexOf(" ");
+                if (0 < index) {
+                    try {
+                        int userId = Integer.parseInt(message.substring(0, index));
+                        message = message.substring(index + 1);
+                        User user = userMap.get(userId);
+                        if (null != user) {
+                            user.getSession().sendString(message);
+                        } else {
+                            adminSession.sendString("编号" + userId + ",已经不在了");
+                        }
+                        return;
+                    } catch (NumberFormatException e) {
+
+                    }
+                }
+                if (null != this.session) {
+                    this.session.sendString(message);
+                }
+            } else {
+                User user = sessionMap.get(session.getId());
+                adminSession.sendString(
+                        (null == user.getNickName() ? "匿名" : user.getNickName()) + ",编号" + user.getId() + " 说:" + message);
+            }
         } else {
             session.sendString("客服不在线哦");
         }
