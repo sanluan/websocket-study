@@ -17,10 +17,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLEngine;
 
 public abstract class SocketProcesser implements Closeable {
-    private boolean server;
     protected Selector selector;
     protected ExecutorService pool;
     protected ProtocolHandler<?> protocolHandler;
@@ -150,20 +148,9 @@ public abstract class SocketProcesser implements Closeable {
                     } else if (key.isAcceptable()) {
                         ServerSocketChannel server = (ServerSocketChannel) key.channel();
                         SocketChannel socketChannel = server.accept();
-                        if (null != sslContext) {
-                            try {
-                                ChannelContext<?> channelContext = new ChannelContext<>(protocolHandler, this, socketChannel,
-                                        createSSLEngine(sslContext, false), blockSize);
-                                channelContext.doHandShake();
-                                register(socketChannel.configureBlocking(false), channelContext);
-                            } catch (Exception ex) {
-                                socketChannel.close();
-                            }
-                        } else {
-                            ChannelContext<?> channelContext = new ChannelContext<>(protocolHandler, this, socketChannel, null,
-                                    blockSize);
-                            register(socketChannel.configureBlocking(false), channelContext);
-                        }
+                        ChannelContext<?> channelContext = new ChannelContext<>(protocolHandler, this, socketChannel, null,
+                                blockSize);
+                        register(socketChannel.configureBlocking(false), channelContext);
                     }
                 }
             }
@@ -172,16 +159,6 @@ public abstract class SocketProcesser implements Closeable {
 
     public void execute(Runnable task) {
         pool.execute(task);
-    }
-
-    protected SSLEngine createSSLEngine(SSLContext sslContext, boolean needClientAuth) {
-        SSLEngine sslEngine = null;
-        if (null != sslContext) {
-            sslEngine = sslContext.createSSLEngine();
-            sslEngine.setUseClientMode(!server);
-            sslEngine.setNeedClientAuth(needClientAuth);
-        }
-        return sslEngine;
     }
 
     public ByteBuffer allocateAndWait(int blockSize) {
@@ -201,21 +178,6 @@ public abstract class SocketProcesser implements Closeable {
     }
 
     public abstract boolean isOpen() throws IOException;
-
-    /**
-     * @return the server
-     */
-    public boolean isServer() {
-        return server;
-    }
-
-    /**
-     * @param server
-     *            the server to set
-     */
-    public void setServer(boolean server) {
-        this.server = server;
-    }
 
     public abstract String getName() throws IOException;
 
