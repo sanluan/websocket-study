@@ -61,34 +61,6 @@ public class MyMessageHandler implements MessageHandler {
             case 'p': {
                 break;
             }
-            case 'l': {
-                if (null != adminSession && adminSession == session) {
-                    String[] paths = message.split(",");
-                    if (1 == paths.length) {
-                        server.load(paths[0]);
-                    } else if (2 == paths.length) {
-                        server.load(paths[0], paths[1]);
-                    } else {
-                        session.sendString("s:error path");
-                    }
-                } else {
-                    session.sendString("s:no auth");
-                }
-                break;
-            }
-            case 'd': {
-                if (null != adminSession && adminSession == session) {
-                    String[] paths = message.split(",");
-                    if (1 == paths.length) {
-                        server.unLoad(paths[0]);
-                    } else {
-                        session.sendString("s:error path");
-                    }
-                } else {
-                    session.sendString("s:no auth");
-                }
-                break;
-            }
             case 'b': {
                 if (null != adminSession && adminSession == session) {
                     int userId = Integer.parseInt(message);
@@ -141,16 +113,21 @@ public class MyMessageHandler implements MessageHandler {
                         }
                         return;
                     } catch (NumberFormatException e) {
-
                     }
                 }
                 if (null != this.session) {
                     this.session.sendString(message);
+                }else {
+                    adminSession.sendString("没有默认编号,请在消息前加编号和空格");
                 }
             } else {
                 User user = sessionMap.get(session.getId());
                 adminSession.sendString(
                         (null == user.getNickName() ? "匿名" : user.getNickName()) + ",编号" + user.getId() + " 说:" + message);
+                if (null == this.session) {
+                    this.session = session;
+                    adminSession.sendString("当前默认编号:" + user.getId());
+                }
             }
         } else {
             session.sendString("客服不在线哦");
@@ -171,6 +148,11 @@ public class MyMessageHandler implements MessageHandler {
         userIdQueue.add(user.getId());
         if (null != adminSession && adminSession == session) {
             adminSession = null;
+        } else if (null != this.session && this.session == session) {
+            if (null != adminSession) {
+                adminSession.sendString("当前默认编号位空");
+            }
+            this.session = null;
         }
     }
 
