@@ -117,7 +117,7 @@ public class ChannelContext<T> implements Closeable {
                         appDataIn.clear();
                         result = sslEngine.unwrap(netDataIn, appDataIn);
                         doTask();
-                    } while (0 == appDataIn.position() || result.getStatus() == SSLEngineResult.Status.OK
+                    } while (result.getStatus() == SSLEngineResult.Status.OK
                             && sslEngine.getHandshakeStatus() == SSLEngineResult.HandshakeStatus.NEED_UNWRAP);
                     if (netDataIn.remaining() > 0) {
                         netDataIn.compact();
