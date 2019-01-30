@@ -10,7 +10,11 @@ fieldset div{height: 500px;overflow-y:auto;}
 <body>
 	<div>
 		<input type="text" name="message" id="message" size="100" placeholder="消息内容"/>
-		<input type="button" value="发送" onclick="send();" />
+		<input type="button" id="send" value="群发" onclick="document.getElementById('message').value='g:'+document.getElementById('message').value;send();"/>
+		<input type="button" id="send" value="发送" onclick="send();"  style="disaply:none"/>
+		<input type="button" id="send" value="登录" onclick="document.getElementById('message').value='a:admin';send();"/>
+		<input type="button" id="send" value="用户列表" onclick="document.getElementById('message').value='u:';send();"/>
+		<input type="button" id="link" value="连接" onclick="link();"  style="disaply:none"/>
 	</div>
 	<fieldset>
 		<legend>历史记录</legend>
@@ -18,26 +22,38 @@ fieldset div{height: 500px;overflow-y:auto;}
 	</fieldset>
 	<script type="text/javascript">
 	var webSocket;
-	var address = 'ws://localhost:1000/websocket/chat';
-	if ('WebSocket' in window){
-	 webSocket = new WebSocket(address);  
-	} else if ('MozWebSocket' in window){
-	 webSocket = new MozWebSocket(address);
+	var address = 'ws://127.0.0.1:1000/test/12';
+
+	function link(){
+		if ('WebSocket' in window){
+		 webSocket = new WebSocket(address);
+		} else if ('MozWebSocket' in window){
+		 webSocket = new MozWebSocket(address);
+		}
+		document.getElementById('link').style.display='none';
 	}
+	link();
+
     webSocket.onerror = function(event) {
     	document.getElementById('messages').innerHTML += 'error:'+event.data;
     };
- 
+
     webSocket.onopen = function(event) {
     	document.getElementById('messages').innerHTML = '连接服务器成功';
+		document.getElementById('send').style.display='block';
     };
- 
+
+	webSocket.onclose = function(event) {
+    	document.getElementById('messages').innerHTML += '<br />断开服务器';
+		document.getElementById('send').style.display='none';
+		document.getElementById('link').style.display='block';
+    };
     webSocket.onmessage = function(event) {
     	var message = event.data;
    		document.getElementById('messages').innerHTML += '<br />server:' + message;
    		document.getElementById('messages').scrollTop=document.getElementById('messages').scrollHeight;
     };
-    
+
     function send(){
    		var message = document.getElementById('message').value;
    		webSocket.send(message);

@@ -90,6 +90,16 @@ public class MyMessageHandler implements MessageHandler {
                 session.sendString("s:" + map.keySet().toString());
                 break;
             }
+            case 'n': {
+                User user = map.get(session.getId());
+                if (null != user && null != message && 0 < message.length() && 100 > message.length()) {
+                    user.setNickName(message);
+                    session.sendString("s:operate success!");
+                } else {
+                    session.sendString("s:error");
+                }
+                break;
+            }
             case 'g': {
                 Collection<User> users = map.values();
                 for (User u : users) {
@@ -129,6 +139,7 @@ public class MyMessageHandler implements MessageHandler {
 
     class User {
         private Session session;
+        private String nickName;
         boolean master;
 
         /**
@@ -159,6 +170,21 @@ public class MyMessageHandler implements MessageHandler {
          */
         public void setMaster(boolean master) {
             this.master = master;
+        }
+
+        /**
+         * @return the nickName
+         */
+        public String getNickName() {
+            return nickName;
+        }
+
+        /**
+         * @param nickName
+         *            the nickName to set
+         */
+        public void setNickName(String nickName) {
+            this.nickName = nickName;
         }
     }
 }

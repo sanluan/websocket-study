@@ -34,10 +34,13 @@ public class ThinMessageServer implements MessageHandler {
                         load(app.getName());
                     }
                 }
+            } else {
+                file.mkdirs();
             }
             if (null == defaultHandler) {
                 defaultHandler = new DefaultAppHandler();
-                defaultHandler.setAppPath("/");
+                defaultHandler.setContextPath("/");
+                defaultHandler.setAppPath(SERVER_ROOT_PATH + "/" + WEBAPP_ROOT_PATH);
                 defaultHandler.setMessageServer(this);
                 defaultHandler.init();
             }
@@ -68,38 +71,41 @@ public class ThinMessageServer implements MessageHandler {
     }
 
     public void unLoad(String path) {
-        handlerMap.get(path).shutdown();
-        handlerMap.remove(path);
+        ThinAppHandler handler = handlerMap.remove(path);
+        if (null != handler) {
+            handler.shutdown();
+        }
     }
 
     public void load(String path) {
         load(path, null);
     }
 
-    public void load(String path, String appPath) {
-        log.info("[" + path + "] initialize start!");
+    public void load(String contextPath, String appPath) {
+        if (WEBAPP_ROOT_PATH.equals(contextPath)) {
+            contextPath = "/";
+        } else {
+            contextPath = "/" + contextPath;
+        }
+        log.info("[" + contextPath + "] initialize start!");
         ThinAppHandler handler = new DefaultAppHandler();
         if (null == appPath) {
-            appPath = SERVER_ROOT_PATH + "/" + path;
+            appPath = SERVER_ROOT_PATH + "/" + contextPath;
         }
         File file = new File(appPath);
         if (file.exists() && file.isDirectory()) {
+            handler.setContextPath(contextPath);
             handler.setAppPath(appPath);
             handler.setMessageServer(this);
             handler.init();
-            String contextPath;
-            if (WEBAPP_ROOT_PATH.equals(path)) {
-                contextPath = "/";
-            } else {
-                contextPath = "/" + path;
-            }
+
             if ("/".equals(contextPath)) {
                 defaultHandler = handler;
             }
             handlerMap.put(contextPath, handler);
-            log.info("[" + path + "] initialize complete!");
+            log.info("[" + contextPath + "] initialize complete!");
         } else {
-            log.info("[" + path + "] not exists! path:" + appPath);
+            log.info("[" + contextPath + "] not exists! path:" + appPath);
         }
     }
 
