@@ -1,4 +1,4 @@
-package test;
+package com.publiccms.message;
 
 import java.util.HashMap;
 import java.util.Map;

@@ -1,4 +1,4 @@
-package test;
+package com.publiccms.message;
 
 import java.io.IOException;
 import java.util.Collection;
@@ -55,6 +55,10 @@ public class MyMessageHandler implements MessageHandler {
                 } else {
                     session.sendString("s:no auth");
                 }
+                break;
+            }
+            case 'p': {
+                session.sendString(message);
                 break;
             }
             case 'd': {
