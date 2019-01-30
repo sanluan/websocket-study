@@ -9,11 +9,11 @@ fieldset div{height: 500px;overflow-y:auto;}
 </head>
 <body>
 	<div>
+	<form onsubmit="return send();">
 		<input type="text" name="message" id="message" size="100" placeholder="消息内容"/>
-		<input type="button" id="send" value="群发" onclick="document.getElementById('message').value='g:'+document.getElementById('message').value;send();"/>
-		<input type="button" id="send" value="发送" onclick="send();"  style="disaply:none"/>
-		<input type="button" id="send" value="用户列表" onclick="document.getElementById('message').value='u:';send();"/>
-		<input type="button" id="link" value="连接" onclick="link();"  style="disaply:none"/>
+		<input type="submit" id="btn-send" value="发送" style="disaply:none"/>
+		<input type="button" id="btn-link" value="连接" onclick="link();"  style="disaply:none"/>
+	</form>
 	</div>
 	<fieldset>
 		<legend>历史记录</legend>
@@ -29,7 +29,7 @@ fieldset div{height: 500px;overflow-y:auto;}
 		} else if ('MozWebSocket' in window){
 		 webSocket = new MozWebSocket(address);
 		}
-		document.getElementById('link').style.display='none';
+		document.getElementById('btn-link').style.display='none';
 	}
 	link();
 
@@ -39,13 +39,13 @@ fieldset div{height: 500px;overflow-y:auto;}
 
     webSocket.onopen = function(event) {
     	document.getElementById('messages').innerHTML = '连接服务器成功';
-		document.getElementById('send').style.display='block';
+		document.getElementById('btn-send').style.display='inline-block';
     };
 
 	webSocket.onclose = function(event) {
     	document.getElementById('messages').innerHTML += '<br />断开服务器';
-		document.getElementById('send').style.display='none';
-		document.getElementById('link').style.display='block';
+		document.getElementById('btn-send').style.display='none';
+		document.getElementById('btn-link').style.display='inline-block';
     };
     webSocket.onmessage = function(event) {
     	var message = event.data;
@@ -59,6 +59,7 @@ fieldset div{height: 500px;overflow-y:auto;}
    		document.getElementById('messages').innerHTML += '<br />i say:'+document.getElementById('message').value;
    		document.getElementById('message').value='';
    		document.getElementById('messages').scrollTop=document.getElementById('messages').scrollHeight;
+		return false;
     }
   </script>
 </body>
