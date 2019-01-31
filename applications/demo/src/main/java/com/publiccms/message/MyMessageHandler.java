@@ -9,13 +9,11 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.microprofile.common.constant.Constants;
-import org.microprofile.message.ThinMessageServer;
 import org.microprofile.websocket.handler.MessageHandler;
 import org.microprofile.websocket.handler.Session;
 
 public class MyMessageHandler implements MessageHandler {
     protected final Log log = LogFactory.getLog(getClass());
-    private ThinMessageServer server;
     Map<Integer, User> userMap = new HashMap<>();
     private ConcurrentLinkedQueue<Integer> userIdQueue = new ConcurrentLinkedQueue<>();
     private Map<String, User> sessionMap = new HashMap<>();
@@ -33,11 +31,9 @@ public class MyMessageHandler implements MessageHandler {
     }
 
     /**
-     * @param server
      * 
      */
-    public MyMessageHandler(ThinMessageServer server) {
-        this.server = server;
+    public MyMessageHandler() {
         password = UUID.randomUUID().toString();
         log.warn("password:" + password);
     }
@@ -54,6 +50,9 @@ public class MyMessageHandler implements MessageHandler {
             case 'a': {
                 if (password.equals(message)) {
                     adminSession = session;
+                    User user = sessionMap.remove(session.getId());
+                    userMap.remove(user.getId());
+                    userIdQueue.add(user.getId());
                     session.sendString("s:login success!");
                 }
                 break;
@@ -117,7 +116,7 @@ public class MyMessageHandler implements MessageHandler {
                 }
                 if (null != this.session) {
                     this.session.sendString(message);
-                }else {
+                } else {
                     adminSession.sendString("没有默认编号,请在消息前加编号和空格");
                 }
             } else {
@@ -140,6 +139,9 @@ public class MyMessageHandler implements MessageHandler {
         user.setId(getNextUserId());
         sessionMap.put(session.getId(), user);
         userMap.put(user.getId(), user);
+        if (null != adminSession) {
+            adminSession.sendString("编号" + user.getId() + ",来了");
+        }
     }
 
     public void onClose(Session session) throws IOException {
@@ -150,9 +152,18 @@ public class MyMessageHandler implements MessageHandler {
             adminSession = null;
         } else if (null != this.session && this.session == session) {
             if (null != adminSession) {
-                adminSession.sendString("当前默认编号位空");
+                if (userMap.isEmpty()) {
+                    this.session = null;
+                    adminSession.sendString("当前默认编号位空");
+                } else {
+                    Integer userId = userMap.keySet().iterator().next();
+                    user = userMap.get(userId);
+                    if (null != user) {
+                        this.session = user.getSession();
+                        adminSession.sendString("当前默认编号:" + user.getId());
+                    }
+                }
             }
-            this.session = null;
         }
     }
 
