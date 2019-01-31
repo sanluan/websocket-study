@@ -22,7 +22,6 @@ public class WebSocketClientTest {
             while (!ws.isOpen()) {
                 Thread.sleep(100);
             }
-            ws.sendString("u:");
             ws.close();
         } catch (IOException e) {
             e.printStackTrace();

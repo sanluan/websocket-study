@@ -2,6 +2,7 @@ package com.publiccms.message;
 
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -50,9 +51,6 @@ public class MyMessageHandler implements MessageHandler {
             case 'a': {
                 if (password.equals(message)) {
                     adminSession = session;
-                    User user = sessionMap.remove(session.getId());
-                    userMap.remove(user.getId());
-                    userIdQueue.add(user.getId());
                     session.sendString("s:login success!");
                 }
                 break;
@@ -65,7 +63,6 @@ public class MyMessageHandler implements MessageHandler {
                     int userId = Integer.parseInt(message);
                     User user = userMap.remove(userId);
                     if (null != user) {
-                        sessionMap.remove(user.getSession().getId());
                         user.getSession().close();
                         session.sendString("s:bye to:" + message);
                     } else {
@@ -100,7 +97,7 @@ public class MyMessageHandler implements MessageHandler {
         } else if (null != adminSession) {
             if (adminSession == session) {
                 int index = message.indexOf(" ");
-                if (0 < index) {
+                if (0 < index && index + 1 < message.length()) {
                     try {
                         int userId = Integer.parseInt(message.substring(0, index));
                         message = message.substring(index + 1);
@@ -140,7 +137,7 @@ public class MyMessageHandler implements MessageHandler {
         sessionMap.put(session.getId(), user);
         userMap.put(user.getId(), user);
         if (null != adminSession) {
-            adminSession.sendString("编号" + user.getId() + ",来了");
+            adminSession.sendString("编号" + user.getId() + "来了,当前在线人数:" + userMap.size());
             session.sendString("欢迎，客服现在在线哦");
         }
     }
@@ -149,20 +146,23 @@ public class MyMessageHandler implements MessageHandler {
         User user = sessionMap.remove(session.getId());
         userMap.remove(user.getId());
         userIdQueue.add(user.getId());
-        if (null != adminSession && adminSession == session) {
-            adminSession = null;
-        } else if (null != this.session && this.session == session) {
-            if (null != adminSession) {
-                if (userMap.isEmpty()) {
+        if (null != adminSession) {
+            if (adminSession == session) {
+                adminSession = null;
+            } else {
+                adminSession.sendString("编号" + user.getId() + "离开了,当前在线人数:" + userMap.size());
+                if (null != this.session && this.session == session) {
                     this.session = null;
-                    adminSession.sendString("当前默认编号位空");
-                } else {
-                    Integer userId = userMap.keySet().iterator().next();
-                    user = userMap.get(userId);
-                    if (null != user) {
-                        this.session = user.getSession();
-                        adminSession.sendString("当前默认编号:" + user.getId());
+                    Iterator<User> iter = userMap.values().iterator();
+                    while (iter.hasNext()) {
+                        User u = iter.next();
+                        if (adminSession != u.getSession()) {
+                            this.session = u.getSession();
+                            adminSession.sendString("当前默认编号:" + user.getId());
+                            break;
+                        }
                     }
+                    adminSession.sendString("当前默认编号位空");
                 }
             }
         }
