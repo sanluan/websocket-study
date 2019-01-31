@@ -21,7 +21,8 @@ public class ManageMessageHandler implements MessageHandler {
      * 
      */
     public ManageMessageHandler(ThinMessageServer server) {
-        password = UUID.randomUUID().toString();
+        this.password = UUID.randomUUID().toString();
+        this.server = server;
         log.warn("applications manage password:" + password);
     }
 
@@ -64,6 +65,14 @@ public class ManageMessageHandler implements MessageHandler {
                     } else {
                         session.sendString("s:error path");
                     }
+                } else {
+                    session.sendString("s:no auth");
+                }
+                break;
+            }
+            case 's': {
+                if (null != adminSession && adminSession == session) {
+                    server.stop();
                 } else {
                     session.sendString("s:no auth");
                 }

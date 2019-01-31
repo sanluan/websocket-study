@@ -141,6 +141,7 @@ public class MyMessageHandler implements MessageHandler {
         userMap.put(user.getId(), user);
         if (null != adminSession) {
             adminSession.sendString("编号" + user.getId() + ",来了");
+            session.sendString("欢迎，客服现在在线哦");
         }
     }
 

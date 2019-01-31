@@ -12,7 +12,7 @@ fieldset div{height: 500px;overflow-y:auto;}
 	<form onsubmit="return send();">
 		<input type="text" name="message" id="message" size="100" placeholder="消息内容"/>
 		<input type="submit" id="btn-send" value="发送" style="disaply:none"/>
-		<input type="button" value="登录" onclick="document.getElementById('message').value='c0566eb2-145c-4a1d-bafa-ef4a9e34bde0';send();"/>
+		<input type="button" value="登录" onclick="document.getElementById('message').value='a:44e8706c-a2c1-4355-8bef-ca83eb9f30cf';send();"/>
 		<input type="button" id="btn-link" value="连接" onclick="link();"  style="disaply:none"/>
 	</form>
 	</div>
@@ -22,7 +22,7 @@ fieldset div{height: 500px;overflow-y:auto;}
 	</fieldset>
 	<script type="text/javascript">
 	var webSocket;
-	var address = 'wss://cms.publiccms.com/message/test/12';
+	var address = 'wss://cms.publiccms.com/message/manage/';
 
 	function link(){
 		if ('WebSocket' in window){
