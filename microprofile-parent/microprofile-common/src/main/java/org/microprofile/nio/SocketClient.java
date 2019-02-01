@@ -9,7 +9,6 @@ import java.nio.channels.SocketChannel;
 import java.util.concurrent.ExecutorService;
 
 import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLEngine;
 
 import org.microprofile.nio.handler.ChannelContext;
 import org.microprofile.nio.handler.ProtocolHandler;
@@ -39,20 +38,10 @@ public class SocketClient extends SocketProcesser implements Closeable {
 
     public SocketClient(SocketAddress socketAddress, ExecutorService pool, ProtocolHandler<?> protocolHandler,
             SSLContext sslContext, boolean needClientAuth, int maxPending) throws IOException {
-        super(pool, protocolHandler, createSSLEngine(sslContext, needClientAuth), maxPending);
+        super(pool, protocolHandler, sslContext, maxPending);
         SocketChannel socketChannel = SocketChannel.open(socketAddress);
-        channelContext = new ChannelContext<>(protocolHandler, this, socketChannel, null != sslContext);
+        channelContext = new ChannelContext<>(protocolHandler, this, socketChannel, createSSLEngine(sslContext, needClientAuth));
         register(socketChannel.configureBlocking(false), channelContext);
-    }
-
-    private static SSLEngine createSSLEngine(SSLContext sslContext, boolean needClientAuth) {
-        SSLEngine sslEngine = null;
-        if (null != sslContext) {
-            sslEngine = sslContext.createSSLEngine();
-            sslEngine.setUseClientMode(true);
-            sslEngine.setNeedClientAuth(needClientAuth);
-        }
-        return sslEngine;
     }
 
     public String getName() throws IOException {

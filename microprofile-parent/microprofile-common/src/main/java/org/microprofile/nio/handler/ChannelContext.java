@@ -6,30 +6,43 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.UUID;
 
+import javax.net.ssl.SSLEngine;
+import javax.net.ssl.SSLEngineResult;
+import javax.net.ssl.SSLEngineResult.HandshakeStatus;
+import javax.net.ssl.SSLException;
+import javax.net.ssl.SSLSession;
+
 public class ChannelContext<T> implements Closeable {
     private String id;
     private SocketChannel socketChannel;
     private ProtocolHandler<T> protocolHandler;
     private ThreadHandler<T> threadHandler;
     private SocketProcesser socketProcesser;
-    private boolean ssl;
+    protected SSLEngine sslEngine;
+    private ByteBuffer netDataIn;
+    private ByteBuffer netDataOut;
+    private ByteBuffer appDataIn;
     private boolean closed;
     private T attachment;
+    private static final ByteBuffer outData = ByteBuffer.wrap("Hello".getBytes());
 
     /**
      * @param protocolHandler
      * @param socketProcesser
      * @param socketChannel
-     * @param ssl
+     * @param sslEngine
      */
     public ChannelContext(ProtocolHandler<T> protocolHandler, SocketProcesser socketProcesser, SocketChannel socketChannel,
-            boolean ssl) {
+            SSLEngine sslEngine) {
         this.id = UUID.randomUUID().toString();
         this.socketChannel = socketChannel;
         this.protocolHandler = protocolHandler;
         this.socketProcesser = socketProcesser;
-        this.ssl = ssl;
+        this.sslEngine = sslEngine;
         this.threadHandler = new ThreadHandler<>(this, socketProcesser);
+        if (null != sslEngine) {
+            createBuffer();
+        }
     }
 
     @Override
@@ -44,6 +57,97 @@ public class ChannelContext<T> implements Closeable {
         }
     }
 
+    public int read(ByteBuffer byteBuffer) throws IOException {
+        if (null == sslEngine) {
+            return socketChannel.read(byteBuffer);
+        } else {
+            if (HandshakeStatus.NOT_HANDSHAKING != sslEngine.getHandshakeStatus()) {
+                doHandShake();
+            }
+            int count = socketChannel.read(netDataIn);
+            if (0 < count) {
+                netDataIn.flip();
+                SSLEngineResult engineResult = sslEngine.unwrap(netDataIn, byteBuffer);
+                doTask();
+                if (engineResult.getStatus() == SSLEngineResult.Status.OK) {
+                    if (netDataIn.remaining() > 0) {
+                        netDataIn.compact();
+                    } else {
+                        netDataIn.clear();
+                    }
+                } else {
+                    count = 0;
+                }
+            }
+            return count;
+        }
+    }
+
+    public void doHandShake() throws IOException {
+        sslEngine.beginHandshake();
+        while (HandshakeStatus.NOT_HANDSHAKING != sslEngine.getHandshakeStatus()) {
+            switch (sslEngine.getHandshakeStatus()) {
+            case NEED_TASK:
+                doTask();
+                break;
+            case NEED_UNWRAP:
+                int count = socketChannel.read(netDataIn);
+                if (0 <= count) {
+                    netDataIn.flip();
+                    SSLEngineResult result;
+                    do {
+                        appDataIn.clear();
+                        result = sslEngine.unwrap(netDataIn, appDataIn);
+                        doTask();
+                    } while (result.getStatus() == SSLEngineResult.Status.OK
+                            && sslEngine.getHandshakeStatus() == SSLEngineResult.HandshakeStatus.NEED_UNWRAP);
+                    if (netDataIn.remaining() > 0) {
+                        netDataIn.compact();
+                    } else {
+                        netDataIn.clear();
+                    }
+                } else {
+                    socketChannel.close();
+                }
+                break;
+            case NEED_WRAP:
+                outData.flip();
+                wrap(outData);
+                socketChannel.write(netDataOut);
+                break;
+            default:
+                break;
+            }
+        }
+    }
+
+    public ByteBuffer wrap(ByteBuffer src) throws SSLException {
+        netDataOut.clear();
+        sslEngine.wrap(src, netDataOut);
+        doTask();
+        netDataOut.flip();
+        return netDataOut;
+    }
+
+    public void doTask() {
+        Runnable task;
+        while ((task = sslEngine.getDelegatedTask()) != null) {
+            socketProcesser.execute(task);
+        }
+    }
+
+    private void createBuffer() {
+        SSLSession session = sslEngine.getSession();
+        int packetBufferSize = session.getPacketBufferSize();
+        int applicationBufferSize = session.getApplicationBufferSize();
+        netDataOut = ByteBuffer.allocate(packetBufferSize);
+        netDataIn = ByteBuffer.allocate(packetBufferSize);
+        appDataIn = ByteBuffer.allocate(applicationBufferSize);
+        netDataOut.clear();
+        netDataIn.clear();
+        appDataIn.clear();
+    }
+
     /**
      * @param src
      * @return
@@ -51,8 +155,8 @@ public class ChannelContext<T> implements Closeable {
      */
     public int write(ByteBuffer src) throws IOException {
         int i = 0, j = 0;
-        if (ssl) {
-            src = socketProcesser.wrap(src);
+        if (null != sslEngine) {
+            src = wrap(src);
         }
         while (src.hasRemaining()) {
             i = socketChannel.write(src);

@@ -67,7 +67,9 @@ public class WebSocketClient implements Closeable {
         socketClient = new SocketClient(host, port, Executors.newFixedThreadPool(1),
                 new WebSocketProtocolHandler(messageHandler, false), sslContext, needClientAuth);
         channelContext = socketClient.getChannelContext();
-        socketClient.doHandShake(channelContext.getSocketChannel());
+        if (ssl) {
+            channelContext.doHandShake();
+        }
         channelContext.write(HttpProtocolUtils.getHandshake(host, port, path));
     }
 

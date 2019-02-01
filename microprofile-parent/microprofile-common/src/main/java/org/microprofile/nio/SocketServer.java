@@ -56,9 +56,10 @@ public class SocketServer extends SocketProcesser implements Closeable {
 
     public SocketServer(SocketAddress socketAddress, ExecutorService pool, ProtocolHandler<?> protocolHandler,
             SSLContext sslContext, int maxPending) throws IOException {
-        super(pool, protocolHandler, null == sslContext ? null : sslContext.createSSLEngine(), maxPending);
+        super(pool, protocolHandler, sslContext, maxPending);
         this.socketAddress = socketAddress;
         this.serverSocketChannel = ServerSocketChannel.open();
+        setServer(true);
         ServerSocket serverSocket = serverSocketChannel.socket();
         serverSocket.bind(socketAddress);
         serverSocketChannel.configureBlocking(false).register(selector, SelectionKey.OP_ACCEPT);
