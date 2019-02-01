@@ -18,10 +18,11 @@ public class ChannelContext<T> implements Closeable {
     private ProtocolHandler<T> protocolHandler;
     private ThreadHandler<T> threadHandler;
     private SocketProcesser socketProcesser;
-    protected SSLEngine sslEngine;
+    private SSLEngine sslEngine;
     private ByteBuffer netDataIn;
     private ByteBuffer netDataOut;
     private ByteBuffer appDataIn;
+    private int blockSize;
     private boolean closed;
     private T attachment;
     private static final ByteBuffer outData = ByteBuffer.wrap("Hello".getBytes());
@@ -31,15 +32,17 @@ public class ChannelContext<T> implements Closeable {
      * @param socketProcesser
      * @param socketChannel
      * @param sslEngine
+     * @param blockSize
      */
     public ChannelContext(ProtocolHandler<T> protocolHandler, SocketProcesser socketProcesser, SocketChannel socketChannel,
-            SSLEngine sslEngine) {
+            SSLEngine sslEngine, int blockSize) {
         this.id = UUID.randomUUID().toString();
         this.socketChannel = socketChannel;
         this.protocolHandler = protocolHandler;
         this.socketProcesser = socketProcesser;
         this.sslEngine = sslEngine;
         this.threadHandler = new ThreadHandler<>(this, socketProcesser);
+        this.blockSize = blockSize;
         if (null != sslEngine) {
             createBuffer();
         }
@@ -51,6 +54,9 @@ public class ChannelContext<T> implements Closeable {
             closed = true;
             threadHandler.close();
             protocolHandler.close(this);
+            if (null != sslEngine) {
+                sslEngine.closeOutbound();
+            }
         }
         if (socketChannel.isOpen()) {
             socketChannel.close();
@@ -83,6 +89,18 @@ public class ChannelContext<T> implements Closeable {
         }
     }
 
+    private void createBuffer() {
+        SSLSession session = sslEngine.getSession();
+        int packetBufferSize = session.getPacketBufferSize();
+        blockSize = blockSize < session.getApplicationBufferSize() ? session.getApplicationBufferSize() : blockSize;
+        netDataOut = ByteBuffer.allocate(packetBufferSize);
+        netDataIn = ByteBuffer.allocate(packetBufferSize);
+        appDataIn = ByteBuffer.allocate(blockSize);
+        netDataOut.clear();
+        netDataIn.clear();
+        appDataIn.clear();
+    }
+
     public void doHandShake() throws IOException {
         sslEngine.beginHandshake();
         while (HandshakeStatus.NOT_HANDSHAKING != sslEngine.getHandshakeStatus()) {
@@ -99,7 +117,7 @@ public class ChannelContext<T> implements Closeable {
                         appDataIn.clear();
                         result = sslEngine.unwrap(netDataIn, appDataIn);
                         doTask();
-                    } while (result.getStatus() == SSLEngineResult.Status.OK
+                    } while (0 == appDataIn.position() || result.getStatus() == SSLEngineResult.Status.OK
                             && sslEngine.getHandshakeStatus() == SSLEngineResult.HandshakeStatus.NEED_UNWRAP);
                     if (netDataIn.remaining() > 0) {
                         netDataIn.compact();
@@ -134,18 +152,6 @@ public class ChannelContext<T> implements Closeable {
         while ((task = sslEngine.getDelegatedTask()) != null) {
             socketProcesser.execute(task);
         }
-    }
-
-    private void createBuffer() {
-        SSLSession session = sslEngine.getSession();
-        int packetBufferSize = session.getPacketBufferSize();
-        int applicationBufferSize = session.getApplicationBufferSize();
-        netDataOut = ByteBuffer.allocate(packetBufferSize);
-        netDataIn = ByteBuffer.allocate(packetBufferSize);
-        appDataIn = ByteBuffer.allocate(applicationBufferSize);
-        netDataOut.clear();
-        netDataIn.clear();
-        appDataIn.clear();
     }
 
     /**
@@ -248,5 +254,12 @@ public class ChannelContext<T> implements Closeable {
      */
     public void setPayloadLength(int payloadLength) {
         this.threadHandler.setPayloadLength(payloadLength);
+    }
+
+    /**
+     * @return the blockSize
+     */
+    public int getBlockSize() {
+        return blockSize;
     }
 }

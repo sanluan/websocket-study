@@ -40,7 +40,8 @@ public class SocketClient extends SocketProcesser implements Closeable {
             SSLContext sslContext, boolean needClientAuth, int maxPending) throws IOException {
         super(pool, protocolHandler, sslContext, maxPending);
         SocketChannel socketChannel = SocketChannel.open(socketAddress);
-        channelContext = new ChannelContext<>(protocolHandler, this, socketChannel, createSSLEngine(sslContext, needClientAuth));
+        channelContext = new ChannelContext<>(protocolHandler, this, socketChannel, createSSLEngine(sslContext, needClientAuth),
+                DEFAULT_BLOCK_SIZE);
         register(socketChannel.configureBlocking(false), channelContext);
     }
 

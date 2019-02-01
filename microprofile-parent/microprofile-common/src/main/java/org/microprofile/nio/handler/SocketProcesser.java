@@ -128,14 +128,14 @@ public abstract class SocketProcesser implements Closeable {
                         ThreadHandler<?> threadHandler = channelContext.getThreadHandler();
                         if (null != channelContext) {
                             try {
-                                ByteBuffer byteBuffer = allocateAndWait();
+                                ByteBuffer byteBuffer = allocateAndWait(channelContext.getBlockSize());
                                 int n = channelContext.read(byteBuffer);
                                 while (0 < n) {
                                     byteBuffer.flip();
                                     if (threadHandler.addByteBuffer(byteBuffer)) {
                                         pool.execute(threadHandler);
                                     }
-                                    byteBuffer = allocateAndWait();
+                                    byteBuffer = allocateAndWait(channelContext.getBlockSize());
                                     n = channelContext.read(byteBuffer);
                                 }
                                 if (-1 == n) {
@@ -153,14 +153,15 @@ public abstract class SocketProcesser implements Closeable {
                         if (null != sslContext) {
                             try {
                                 ChannelContext<?> channelContext = new ChannelContext<>(protocolHandler, this, socketChannel,
-                                        createSSLEngine(sslContext, false));
+                                        createSSLEngine(sslContext, false), blockSize);
                                 channelContext.doHandShake();
                                 register(socketChannel.configureBlocking(false), channelContext);
                             } catch (Exception ex) {
                                 socketChannel.close();
                             }
                         } else {
-                            ChannelContext<?> channelContext = new ChannelContext<>(protocolHandler, this, socketChannel, null);
+                            ChannelContext<?> channelContext = new ChannelContext<>(protocolHandler, this, socketChannel, null,
+                                    blockSize);
                             register(socketChannel.configureBlocking(false), channelContext);
                         }
                     }
@@ -183,7 +184,7 @@ public abstract class SocketProcesser implements Closeable {
         return sslEngine;
     }
 
-    public ByteBuffer allocateAndWait() {
+    public ByteBuffer allocateAndWait(int blockSize) {
         while (0 < maxPending && maxPending < pending) {
             try {
                 Thread.sleep(50);
