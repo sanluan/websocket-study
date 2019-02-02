@@ -69,16 +69,10 @@ public class DefaultAppHandler extends ThinAppHandler {
         for (ThinAppInitializer initializer : appClassLoader.getInitializerList()) {
             initializer.stop();
         }
-        appClassLoader.getInitializerList().clear();
         if (null != customHandler) {
             customHandler.shutdown();
             customHandler = null;
         }
-        cachedMappings.clear();
-        cachedUrl.clear();
-        urlMappings.clear();
-        fileTypeMappings.clear();
-        dirMappings.clear();
         appClassLoader = null;
     }
 
