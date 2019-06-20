@@ -2,6 +2,7 @@ package org.microprofile.websocket.handler;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.HashMap;
 import java.util.Map;
 
 import org.microprofile.common.constant.Constants;
@@ -12,6 +13,7 @@ public class Session {
     private String id;
     private ChannelContext<WebSocketFrame> channelContext;
     private Map<String, String> headers;
+    private Map<String, String> attributeMap;
     private String url;
     private String contextPath;
 
@@ -48,6 +50,25 @@ public class Session {
      */
     public void setHeaders(Map<String, String> headers) {
         this.headers = headers;
+    }
+
+    /**
+     * @param key
+     * @return the attribute value
+     */
+    public String getAttribute(String key) {
+        return null == attributeMap ? null : attributeMap.get(key);
+    }
+
+    /**
+     * @param key
+     * @param value
+     */
+    public void setAttribute(String key, String value) {
+        if (null == attributeMap) {
+            attributeMap = new HashMap<>();
+        }
+        attributeMap.put(key, value);
     }
 
     /**
@@ -112,7 +133,8 @@ public class Session {
     }
 
     /**
-     * @param contextPath the contextPath to set
+     * @param contextPath
+     *            the contextPath to set
      */
     public void setContextPath(String contextPath) {
         this.contextPath = contextPath;
