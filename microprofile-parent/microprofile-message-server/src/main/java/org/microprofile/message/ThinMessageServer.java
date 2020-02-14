@@ -22,7 +22,7 @@ public class ThinMessageServer implements MessageHandler {
     private WebSocketServer ws;
     private int port;
 
-    public ThinMessageServer(int port, int poolSize, int maxPending) {
+    public ThinMessageServer(int port, int poolSize) {
         try {
             this.port = port;
             ws = new WebSocketServer(port, poolSize, this, 1000);
@@ -59,8 +59,7 @@ public class ThinMessageServer implements MessageHandler {
 
     public static void main(String[] args) {
         new ThinMessageServer(Integer.getInteger("thinMessageServer.port", 1000).intValue(),
-                Integer.getInteger("thinMessageServer.poolSize", 20).intValue(),
-                Integer.getInteger("thinMessageServer.maxPending", 1000).intValue());
+                Integer.getInteger("thinMessageServer.poolSize", 20).intValue());
     }
 
     public void stop() throws IOException {

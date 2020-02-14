@@ -28,7 +28,7 @@ public abstract class SocketProcesser implements Closeable {
     private ConcurrentLinkedQueue<ByteBuffer> recycleByteBufferQueue = new ConcurrentLinkedQueue<>();
     protected int blockSize;
     protected List<Thread> threads = new ArrayList<>();
-    protected boolean closed;
+    protected volatile boolean closed;
 
     protected static final int DEFAULT_BLOCK_SIZE = 2048;
 

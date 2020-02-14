@@ -30,6 +30,6 @@ subprojects{
   }
   ext {
       // http://mvnrepository.com/artifact/com.fasterxml.jackson.core/jackson-core
-      jacksonVersion = "2.9.8"
+      jacksonVersion = "2.10.1"
   }
 }
