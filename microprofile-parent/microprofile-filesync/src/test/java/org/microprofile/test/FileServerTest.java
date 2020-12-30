@@ -17,8 +17,8 @@ public class FileServerTest {
             listener.start();
 
             Thread.sleep(1000 * 1000);
-            wss.close();
             listener.stop();
+            wss.close();
         } catch (Exception e) {
             e.printStackTrace();
         }

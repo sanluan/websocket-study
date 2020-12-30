@@ -15,6 +15,7 @@ public class FileClientTest {
             listener.addEventHandler(fileEventHandler);
             listener.start();
             Thread.sleep(1000 * 1000);
+            listener.stop();
             ws.close();
         } catch (Exception e) {
             e.printStackTrace();
