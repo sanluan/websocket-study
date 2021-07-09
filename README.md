@@ -1,5 +1,5 @@
-# MicroProfile
-MicroProfile为用户数据解决方案研究项目，该项目将长期处于学习、探索、研究状态，不保证框架与功能稳定
+# websocket-study
+websocket-study为websocket学习项目,基于nio实现的socket协议服务端、客户端，websocket服务端、客户端，文件双向同步服务，websocket容器等
 
 已实现功能：
 1. nio server
