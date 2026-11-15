@@ -23,11 +23,19 @@ public class FileListener implements FileAlterationListener {
      */
     public final static int DEFULT_BLOCK_SIZE = 1024 * 1024;
 
+    /**
+     * 默认轮询间隔。commons-io 的 FileAlterationMonitor 默认 10 秒，
+     * 本地改动要等 10 秒才推送，这里改成 1 秒
+     */
+    public final static long DEFAULT_POLLING_INTERVAL = 1000L;
+
     private String basePath;
     private List<EventHandler> eventHandlers;
     private FileAlterationObserver observer;
     private FileAlterationMonitor fileMonitor;
     private LocalFileAdaptor localFileAdaptor;
+    private long pollingInterval = DEFAULT_POLLING_INTERVAL;
+    private boolean started;
 
     /**
      * @param listenPath
@@ -65,16 +73,16 @@ public class FileListener implements FileAlterationListener {
         File directory = observer.getDirectory();
         basePath = directory.getAbsolutePath();
         localFileAdaptor = new LocalFileAdaptor(basePath, blockSize);
-        fileMonitor = new FileAlterationMonitor();
         observer.addListener(this);
-        fileMonitor.addObserver(observer);
     }
 
     private void process(EventType eventType, File file) {
         if (null != eventHandlers) {
             String filePath = localFileAdaptor.getRelativeFilePath(file);
             for (EventHandler eventHandler : eventHandlers) {
-                eventHandler.handle(new FileEvent(eventType, filePath, file.length(), file.lastModified()));
+                // FileEvent 的签名是 (eventType, filePath, lastModify, fileSize)，
+                // 原来这里传成了 (size, lastModified)，导致下游把上万兆的时间戳当作文件大小
+                eventHandler.handle(new FileEvent(eventType, filePath, file.lastModified(), file.length()));
             }
         }
     }
@@ -138,10 +146,40 @@ public class FileListener implements FileAlterationListener {
     }
 
     /**
+     * 设置文件监听轮询间隔（毫秒），必须在 {@link #start()} 之前调用。
+     * <p>
+     * 间隔越小同步越及时；远程写入后用于抑制回传的时间窗（
+     * {@link org.microprofile.file.handler.RemoteMessageHandler#setEchoSuppressMillis(long)}）
+     * 应大于该间隔。
+     * </p>
+     *
+     * @param pollingInterval
+     */
+    public void setPollingInterval(long pollingInterval) {
+        if (0 >= pollingInterval) {
+            throw new IllegalArgumentException("pollingInterval must be positive");
+        }
+        if (started) {
+            throw new IllegalStateException("listener already started, can't change pollingInterval");
+        }
+        this.pollingInterval = pollingInterval;
+    }
+
+    /**
+     * @return 当前轮询间隔（毫秒）
+     */
+    public long getPollingInterval() {
+        return pollingInterval;
+    }
+
+    /**
      * @throws Exception
      */
     public void start() throws Exception {
+        fileMonitor = new FileAlterationMonitor(pollingInterval);
+        fileMonitor.addObserver(observer);
         fileMonitor.start();
+        started = true;
     }
 
     /**
@@ -149,7 +187,10 @@ public class FileListener implements FileAlterationListener {
      */
     public void stop() throws Exception {
         localFileAdaptor.stop();
-        fileMonitor.stop();
+        if (null != fileMonitor) {
+            fileMonitor.stop();
+        }
+        started = false;
     }
 
 }

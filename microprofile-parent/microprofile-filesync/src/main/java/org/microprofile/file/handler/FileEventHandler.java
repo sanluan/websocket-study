@@ -4,15 +4,12 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.nio.MappedByteBuffer;
-import java.nio.channels.FileChannel;
 import java.util.LinkedList;
 import java.util.List;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.microprofile.common.utils.EncodeUtils;
 import org.microprofile.common.utils.EventQueue;
 import org.microprofile.file.event.EventHandler;
 import org.microprofile.file.event.FileEvent;
@@ -49,8 +46,37 @@ public class FileEventHandler implements EventHandler {
         this.remoteMessageHandler = new RemoteMessageHandler(this, localFileAdaptor);
     }
 
+    /**
+     * @param localFileAdaptor
+     * @param syncMode
+     *            同步方向开关
+     */
+    public FileEventHandler(LocalFileAdaptor localFileAdaptor, SyncMode syncMode) {
+        this(localFileAdaptor, DEFULT_CACHE_SIZE, syncMode);
+    }
+
+    /**
+     * @param localFileAdaptor
+     * @param cacheSize
+     * @param syncMode
+     *            同步方向开关
+     */
+    public FileEventHandler(LocalFileAdaptor localFileAdaptor, int cacheSize, SyncMode syncMode) {
+        this(localFileAdaptor, cacheSize);
+        setSyncMode(null == syncMode ? SyncMode.BIDIRECTIONAL : syncMode);
+    }
+
     @Override
     public void handle(FileEvent event) {
+        if (!remoteMessageHandler.getSyncMode().isSendEnabled()) {
+            log.debug("同步模式 " + remoteMessageHandler.getSyncMode() + " 不允许发送，跳过 " + event);
+            return;
+        }
+        if (remoteMessageHandler.isRemoteWriteEcho(event.getFilePath())) {
+            // 该文件刚由对端写入本地，本地监听不应把它再回传，否则两端会互推/来回覆盖
+            log.debug("skip remote echo " + event);
+            return;
+        }
         if (eventQueue.contains(event)) {
             eventQueue.remove(event);
             log.info("skip " + event);
@@ -72,24 +98,17 @@ public class FileEventHandler implements EventHandler {
                     if (HEADER_FILE_MODIFY == code && fileSize > blockSize) {
                         List<BlockChecksum> blockChecksumList = new LinkedList<>();
                         int blocks = (int) (event.getFileSize() / blockSize);
-                        try (RandomAccessFile raf = new RandomAccessFile(file, "r"); FileChannel channel = raf.getChannel();) {
-                            for (int i = 0; i <= blocks; i++) {
-                                if (i == blocks) {
-                                    int lastBlockSize = (int) (fileSize % blockSize);
-                                    if (0 != lastBlockSize) {
-                                        MappedByteBuffer byteBuffer = channel.map(FileChannel.MapMode.READ_ONLY, i * blockSize,
-                                                lastBlockSize);
-                                        blockChecksumList.add(new BlockChecksum(i, EncodeUtils.md2(byteBuffer)));
-                                    }
-                                } else {
-                                    MappedByteBuffer byteBuffer = channel.map(FileChannel.MapMode.READ_ONLY, i * blockSize,
-                                            blockSize);
-                                    blockChecksumList.add(new BlockChecksum(i, EncodeUtils.md2(byteBuffer)));
+                        for (int i = 0; i <= blocks; i++) {
+                            try {
+                                int size = i == blocks ? (int) (fileSize % blockSize) : blockSize;
+                                if (0 < size) {
+                                    blockChecksumList.add(
+                                            new BlockChecksum(i, LocalFileAdaptor.checksum(file, (long) i * blockSize, size)));
                                 }
+                            } catch (IOException e) {
+                                blockChecksumList.clear();
+                                break;
                             }
-                        } catch (FileNotFoundException e) {
-                            blockChecksumList.clear();
-                        } catch (IOException e) {
                         }
                         if (!blockChecksumList.isEmpty()) {
                             remoteMessageHandler.sendBlockchecksumList(null, event.getFilePath(), fileSize, blockSize,
@@ -137,6 +156,26 @@ public class FileEventHandler implements EventHandler {
     public RemoteMessageHandler getRemoteMessageHandler(boolean master) {
         remoteMessageHandler.setMaster(master);
         return remoteMessageHandler;
+    }
+
+    /**
+     * 同步方向开关（等价于 {@code getRemoteMessageHandler(master).setSyncMode(mode)}）。
+     * <p>
+     * {@link SyncMode#PUSH_ONLY}：只上传本端变更；{@link SyncMode#PULL_ONLY}：只接收对端变更；
+     * {@link SyncMode#BIDIRECTIONAL}：双向（默认）。
+     * </p>
+     *
+     * @param syncMode
+     */
+    public void setSyncMode(SyncMode syncMode) {
+        remoteMessageHandler.setSyncMode(syncMode);
+    }
+
+    /**
+     * @return 当前同步方向开关
+     */
+    public SyncMode getSyncMode() {
+        return remoteMessageHandler.getSyncMode();
     }
 
     @Override
