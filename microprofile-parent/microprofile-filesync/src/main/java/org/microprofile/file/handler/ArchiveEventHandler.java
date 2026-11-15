@@ -1,4 +1,4 @@
-package org.microprofile.file.archive;
+package org.microprofile.file.handler;
 
 import java.io.File;
 import java.io.IOException;
@@ -23,10 +23,13 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.microprofile.common.constant.Constants;
+import org.microprofile.file.archive.ArchiveEntry;
+import org.microprofile.file.archive.BlockRef;
+import org.microprofile.file.archive.DeleteRecorder;
+import org.microprofile.file.archive.MergeReport;
 import org.microprofile.file.event.EventHandler;
 import org.microprofile.file.event.FileEvent;
 import org.microprofile.file.event.NodeInfo;
-import org.microprofile.file.handler.LocalFileAdaptor;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -58,7 +61,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  *
  * </p>
  */
-public class ArchiveHandler implements EventHandler, DeleteRecorder {
+public class ArchiveEventHandler extends RemoteEventHandler implements EventHandler, DeleteRecorder {
 
     public final static String SUFFIX_FULL = ".full";
     public final static String SUFFIX_PATCH = ".b";
@@ -117,7 +120,7 @@ public class ArchiveHandler implements EventHandler, DeleteRecorder {
      * @param localFileAdaptor
      *            同步目录的适配器，用来把相对路径映射回磁盘文件
      */
-    public ArchiveHandler(String archiveRoot, LocalFileAdaptor localFileAdaptor) {
+    public ArchiveEventHandler(String archiveRoot, LocalFileAdaptor localFileAdaptor) {
         this(new File(archiveRoot), localFileAdaptor);
     }
 
@@ -125,7 +128,7 @@ public class ArchiveHandler implements EventHandler, DeleteRecorder {
      * @param archiveRoot
      * @param localFileAdaptor
      */
-    public ArchiveHandler(File archiveRoot, LocalFileAdaptor localFileAdaptor) {
+    public ArchiveEventHandler(File archiveRoot, LocalFileAdaptor localFileAdaptor) {
         super();
         if (null == archiveRoot) {
             throw new IllegalArgumentException("archiveRoot is null");
@@ -135,6 +138,7 @@ public class ArchiveHandler implements EventHandler, DeleteRecorder {
         }
         this.archiveRoot = archiveRoot.getAbsoluteFile();
         this.localFileAdaptor = localFileAdaptor;
+        this.remoteMessageHandler = new RemoteMessageHandler(this, localFileAdaptor);
         if (0 < localFileAdaptor.getBlockSize()) {
             this.blockSize = localFileAdaptor.getBlockSize();
         }

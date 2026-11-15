@@ -11,15 +11,13 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.microprofile.common.utils.EventQueue;
-import org.microprofile.file.archive.DeleteRecorder;
 import org.microprofile.file.event.EventHandler;
 import org.microprofile.file.event.EventSource;
 import org.microprofile.file.event.FileEvent;
 import org.microprofile.file.event.FileEvent.EventType;
-import org.microprofile.file.event.NodeInfo;
 import org.microprofile.file.message.BlockChecksum;
 
-public class FileEventHandler implements EventHandler {
+public class FileEventHandler extends RemoteEventHandler implements EventHandler {
     protected final Log log = LogFactory.getLog(getClass());
 
     public final static int DEFULT_CACHE_SIZE = 1000;
@@ -29,7 +27,6 @@ public class FileEventHandler implements EventHandler {
 
     private EventQueue<FileEvent> eventQueue;
     private LocalFileAdaptor localFileAdaptor;
-    private RemoteMessageHandler remoteMessageHandler;
     /**
      * 回环抑制登记的旁听者（归档处理器用它拿到对端写入的来源节点）
      */
@@ -77,6 +74,11 @@ public class FileEventHandler implements EventHandler {
     public void handle(FileEvent event) {
         if (!remoteMessageHandler.getSyncMode().isSendEnabled()) {
             log.debug("同步模式 " + remoteMessageHandler.getSyncMode() + " 不允许发送，跳过 " + event);
+            return;
+        }
+        if (!event.getEventType().isDirectory()
+                && !remoteMessageHandler.canSend(event.getFilePath(), event.getFileSize(), event.getLastModify())) {
+            // 本端广播规则排除的文件：不公告、不回送内容。目录事件没有内容，始终同步
             return;
         }
         if (remoteMessageHandler.isRemoteWriteEcho(event.getFilePath())) {
@@ -157,83 +159,6 @@ public class FileEventHandler implements EventHandler {
             }
         }
 
-    }
-
-    /**
-     * @param master
-     * @return the remoteMessageHandler
-     */
-    public RemoteMessageHandler getRemoteMessageHandler(boolean master) {
-        remoteMessageHandler.setMaster(master);
-        return remoteMessageHandler;
-    }
-
-    /**
-     * 同步方向开关（等价于 {@code getRemoteMessageHandler(master).setSyncMode(mode)}）。
-     * <p>
-     * {@link SyncMode#PUSH_ONLY}：只上传本端变更；{@link SyncMode#PULL_ONLY}：只接收对端变更；
-     * {@link SyncMode#BIDIRECTIONAL}：双向（默认）。
-     * </p>
-     *
-     * @param syncMode
-     */
-    public void setSyncMode(SyncMode syncMode) {
-        remoteMessageHandler.setSyncMode(syncMode);
-    }
-
-    /**
-     * @return 当前同步方向开关
-     */
-    public SyncMode getSyncMode() {
-        return remoteMessageHandler.getSyncMode();
-    }
-
-    /**
-     * 打开/关闭多向同步（中继），等价于
-     * {@code getRemoteMessageHandler(master).setMultiWaySync(multiWay)}。
-     * <p>
-     * 一个服务端接多个客户端时，在服务端一侧打开，客户端 A 的改动会经由服务端到达 B、C。
-     * </p>
-     *
-     * @param multiWaySync
-     */
-    public void setMultiWaySync(boolean multiWaySync) {
-        remoteMessageHandler.setMultiWaySync(multiWaySync);
-    }
-
-    /**
-     * @return 是否开启多向同步（中继）
-     */
-    public boolean isMultiWaySync() {
-        return remoteMessageHandler.isMultiWaySync();
-    }
-
-    /**
-     * 设置删除记录器（归档模式用），等价于
-     * {@code getRemoteMessageHandler(master).setDeleteRecorder(recorder)}。
-     *
-     * @param deleteRecorder
-     */
-    public void setDeleteRecorder(DeleteRecorder deleteRecorder) {
-        remoteMessageHandler.setDeleteRecorder(deleteRecorder);
-    }
-
-    /**
-     * @return 本节点身份信息，等价于 {@code getRemoteMessageHandler(master).getNodeInfo()}
-     */
-    public NodeInfo getNodeInfo() {
-        return remoteMessageHandler.getNodeInfo();
-    }
-
-    /**
-     * 指定本节点身份信息（默认是采集到的本机信息）。需要与监听器
-     * {@link org.microprofile.file.listener.FileListener#setNodeInfo(NodeInfo)} 设置成同一个，否则
-     * 事件里的身份和报文里的身份会不一致。
-     *
-     * @param nodeInfo
-     */
-    public void setNodeInfo(NodeInfo nodeInfo) {
-        remoteMessageHandler.setNodeInfo(nodeInfo);
     }
 
     @Override

@@ -4,7 +4,6 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.nio.channels.FileLock;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -139,7 +138,7 @@ public class LocalFileAdaptor {
             mkdirs(file);
         }
         int contentLength = start >= data.length ? 0 : data.length - start;
-        try (RandomAccessFile raf = new RandomAccessFile(file, "rw"); FileLock lock = raf.getChannel().lock()) {
+        try (RandomAccessFile raf = new RandomAccessFile(file, "rw");) {
             // 整文件写入必须从偏移 0 开始。原实现 seek(data.length - start)，
             // 等于把内容写到“内容长度”这个偏移上，新建文件前面会多出一段等长空洞
             raf.seek(0);
@@ -174,7 +173,7 @@ public class LocalFileAdaptor {
         int contentLength = startIndex >= data.length ? 0 : data.length - startIndex;
         // blockSize 为 -1 表示整文件写入；同时把偏移换算成 long，避免大文件下标溢出
         long baseOffset = blockSize > 0 ? (long) blockIndex * blockSize : 0L;
-        try (RandomAccessFile raf = new RandomAccessFile(file, "rw"); FileLock lock = raf.getChannel().lock()) {
+        try (RandomAccessFile raf = new RandomAccessFile(file, "rw");) {
             raf.seek(baseOffset);
             if (0 < contentLength) {
                 raf.write(data, startIndex, contentLength);
@@ -351,6 +350,10 @@ public class LocalFileAdaptor {
             if (localFileAdaptor.isRunning()) {
                 File f = file.toFile();
                 String relativeFilePath = localFileAdaptor.getRelativeFilePath(f);
+                if (!remoteMessageHandler.canSend(relativeFilePath, attrs.size(), f.lastModified())) {
+                    // 本端广播规则排除的文件：对账时根本不对外公告（也不算校验和，省一次读盘）
+                    return FileVisitResult.CONTINUE;
+                }
                 FileChecksum fileChecksum;
                 FileChecksumCache fileChecksumCache = cache.get(relativeFilePath);
                 if (null == fileChecksumCache || fileChecksumCache.getLastModify() != f.lastModified()) {

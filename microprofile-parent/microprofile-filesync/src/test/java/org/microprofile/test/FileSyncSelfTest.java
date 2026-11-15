@@ -14,11 +14,13 @@ import java.util.function.BooleanSupplier;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.filefilter.TrueFileFilter;
 import org.microprofile.file.archive.ArchiveEntry;
-import org.microprofile.file.archive.ArchiveHandler;
 import org.microprofile.file.archive.MergeReport;
 import org.microprofile.file.event.EventHandler;
 import org.microprofile.file.event.FileEvent;
 import org.microprofile.file.event.NodeInfo;
+import org.microprofile.file.filter.FileRule;
+import org.microprofile.file.filter.FileRuleSet;
+import org.microprofile.file.handler.ArchiveEventHandler;
 import org.microprofile.file.handler.FileEventHandler;
 import org.microprofile.file.handler.LoggingEventHandler;
 import org.microprofile.file.handler.RemoteMessageHandler;
@@ -49,6 +51,7 @@ public class FileSyncSelfTest {
     private static final int PORT_LOG = 20006;
     private static final int PORT_ARCHIVE = 20007;
     private static final int PORT_NODE = 20008;
+    private static final int PORT_RULE = 20009;
 
     private static int passed = 0;
     private static int failed = 0;
@@ -73,6 +76,8 @@ public class FileSyncSelfTest {
             testNodeInfo();
             testEventCarriesNodeInfo(new File(root, "node-event"));
             testNodeChain(new File(root, "node-chain"));
+            testRules();
+            testRuleFilter(new File(root, "rules"));
         } finally {
             System.out.println("RESULT: " + (0 == failed ? "PASS" : "FAIL") + " (" + passed + " passed, " + failed
                     + " failed)");
@@ -363,7 +368,7 @@ public class FileSyncSelfTest {
         write(new File(syncDir, "big.bin"), big);
 
         FileListener listener = new FileListener(syncDir.getAbsolutePath(), BLOCK, TrueFileFilter.INSTANCE);
-        ArchiveHandler archive = new ArchiveHandler(archiveDir, listener.getLocalFileAdaptor());
+        ArchiveEventHandler archive = new ArchiveEventHandler(archiveDir, listener.getLocalFileAdaptor());
         listener.addEventHandler(archive);
 
         int initial = archive.initialFullArchive();
@@ -441,7 +446,7 @@ public class FileSyncSelfTest {
 
         Peer server = startServerWithArchive(dirS, PORT_ARCHIVE, archiveDir);
         Peer client = connectClient(dirC, PORT_ARCHIVE, SyncMode.BIDIRECTIONAL);
-        ArchiveHandler archive = server.archive;
+        ArchiveEventHandler archive = server.archive;
         try {
             waitSessions(server, 1);
             check("归档模式不影响同步", waitEqual(new File(dirS, "srv.txt"), new File(dirC, "srv.txt"), 30000));
@@ -597,12 +602,127 @@ public class FileSyncSelfTest {
         }
     }
 
+    // -------------------------------------------------------------- 规则过滤
+
+    /**
+     * 规则判定本身（纯内存，不联网）：白名单优先级、通配符、大小、修改日期、默认全放行。
+     */
+    private static void testRules() throws Exception {
+        System.out.println("=== FILE RULES ===");
+        long now = System.currentTimeMillis();
+
+        // 没有配置任何规则 = 全部文件
+        check("默认规则（未配置）全部放行", FileRuleSet.EMPTY.matches("a/b/c.txt", 100, now));
+
+        // 白名单：只有命中才放行
+        FileRuleSet white = FileRuleSet.ofWhitelist(FileRule.ofPattern("*.txt"));
+        check("白名单放行命中项", white.matches("a.txt", 100, now));
+        check("白名单拒绝未命中项", !white.matches("a.tmp", 100, now));
+
+        // 黑名单：命中即排除，其余放行
+        FileRuleSet black = FileRuleSet.ofBlacklist(FileRule.ofPattern("*.tmp"));
+        check("黑名单排除命中项", !black.matches("x.tmp", 100, now));
+        check("黑名单不影响其它文件", black.matches("x.txt", 100, now));
+
+        // 同一条路径同时命中白名单与黑名单：白名单优先（放行）
+        FileRuleSet both = FileRuleSet.ofBlacklist(FileRule.ofPattern("*.tmp"))
+                .withWhitelist(FileRule.ofPattern("keep*.tmp"));
+        check("白名单优先级高于黑名单（同时命中时放行）", both.matches("keep.tmp", 100, now) && !both.matches("drop.tmp", 100,
+                now));
+
+        // 通配符：** 跨目录，* 不跨目录
+        FileRuleSet deep = FileRuleSet.ofBlacklist(FileRule.ofPattern("logs/**/*.log"));
+        check("通配符 ** 跨目录", !deep.matches("logs/a.log", 100, now) && !deep.matches("logs/2026/11/b.log", 100, now)
+                && deep.matches("data/c.log", 100, now));
+
+        // 大小规则（含边界）
+        FileRuleSet small = FileRuleSet.ofWhitelist(FileRule.builder().pattern("*.bin").maxSize(1024 * 1024).build());
+        check("大小上限规则", small.matches("a.bin", 1024 * 1024, now) && !small.matches("b.bin", 1024 * 1024 + 1, now));
+        FileRuleSet big = FileRuleSet.ofWhitelist(FileRule.builder().pattern("*.bin").minSize(1024).build());
+        check("大小下限规则", big.matches("a.bin", 2048, now) && !big.matches("b.bin", 512, now));
+
+        // 修改日期规则
+        FileRuleSet old = FileRuleSet.ofBlacklist(FileRule.modifiedBefore(now - 86400000L));
+        check("修改日期规则", !old.matches("old.txt", 100, now - 2 * 86400000L) && old.matches("new.txt", 100, now));
+
+        // 大小/时间未知（删除事件就是这样）：带大小/日期条件的规则不命中
+        check("大小未知时带大小条件的白名单不放行", !big.matches("a.bin", FileRule.UNSET, now));
+        check("修改时间未知时黑名单的日期规则不生效（放行）", old.matches("x.txt", 100, FileRule.UNSET));
+
+        // regex: 前缀按正则表达式处理
+        FileRuleSet regex = FileRuleSet.ofBlacklist(FileRule.ofRegex(".*\\.(tmp|bak)"));
+        check("regex: 前缀按正则处理", !regex.matches("a.tmp", 100, now) && !regex.matches("b.bak", 100, now)
+                && regex.matches("c.txt", 100, now));
+
+        check("规则描述可读", 0 <= both.describe().indexOf("keep*.tmp"));
+    }
+
+    /**
+     * 每一端配置自己的广播/接收白名单黑名单，验证真正生效：被排除的文件既不出去、也进不来。
+     */
+    private static void testRuleFilter(File root) throws Exception {
+        System.out.println("=== RULES ON THE WIRE ===");
+        File dirS = new File(root, "s");
+        File dirC = new File(root, "c");
+
+        Peer server = startServer(dirS, PORT_RULE, SyncMode.BIDIRECTIONAL, false);
+        // 服务端：广播时排除 .tmp；接收只收 .txt
+        server.handler.setSendRules(FileRuleSet.ofBlacklist(FileRule.ofPattern("*.tmp")));
+        server.handler.setReceiveRules(FileRuleSet.ofWhitelist(FileRule.ofPattern("*.txt")));
+
+        Peer client = connectClient(dirC, PORT_RULE, SyncMode.BIDIRECTIONAL);
+        // 客户端：广播时排除 .bak；接收不接受 .log
+        client.handler.setSendRules(FileRuleSet.ofBlacklist(FileRule.ofPattern("*.bak")));
+        client.handler.setReceiveRules(FileRuleSet.ofBlacklist(FileRule.ofPattern("*.log")));
+        try {
+            waitSessions(server, 1);
+
+            // 1) 客户端广播被允许的 .txt → 服务端（接收白名单命中）
+            write(new File(dirC, "from-c.txt"), "allow-from-c".getBytes("UTF-8"));
+            check("服务端收到客户端允许的 from-c.txt",
+                    null != waitContains(new File(dirS, "from-c.txt"), 20000, "allow-from-c"));
+
+            // 2) 客户端广播 .tmp → 服务端接收白名单拒绝
+            write(new File(dirC, "from-c.tmp"), "deny-by-receive-white".getBytes("UTF-8"));
+            Thread.sleep(3000);
+            check("服务端没有接收被接收白名单排除的 from-c.tmp", !new File(dirS, "from-c.tmp").exists());
+
+            // 3) 客户端自己的广播黑名单拦下 .bak（连对账公告都不会发出去）
+            write(new File(dirC, "x.bak"), "deny-by-send-black".getBytes("UTF-8"));
+            Thread.sleep(3000);
+            check("客户端没有广播被发送黑名单排除的 x.bak", !new File(dirS, "x.bak").exists());
+
+            // 4) 服务端 .txt → 客户端（两边都允许）
+            write(new File(dirS, "from-s.txt"), "allow-from-s".getBytes("UTF-8"));
+            check("客户端收到服务端允许的 from-s.txt",
+                    null != waitContains(new File(dirC, "from-s.txt"), 20000, "allow-from-s"));
+
+            // 5) 服务端 .log → 客户端接收黑名单拒绝（服务端发送规则并不排除它）
+            write(new File(dirS, "from-s.log"), "deny-by-receive-black".getBytes("UTF-8"));
+            Thread.sleep(3000);
+            check("客户端没有接收被接收黑名单排除的 from-s.log", !new File(dirC, "from-s.log").exists());
+
+            // 6) 服务端 .tmp → 服务端广播黑名单拦下（客户端规则与此无关）
+            write(new File(dirS, "from-s.tmp"), "deny-by-send-black-s".getBytes("UTF-8"));
+            Thread.sleep(3000);
+            check("服务端没有广播被发送黑名单排除的 from-s.tmp", !new File(dirC, "from-s.tmp").exists());
+
+            System.out.println("  server rules: " + server.handler.getSendRules().describe() + " / "
+                    + server.handler.getReceiveRules().describe());
+            System.out.println("  client rules: " + client.handler.getSendRules().describe() + " / "
+                    + client.handler.getReceiveRules().describe());
+        } finally {
+            client.stop();
+            server.stop();
+        }
+    }
+
     // ---------------------------------------------------------------- 工具
 
     private static class Peer {
         FileListener listener;
         FileEventHandler handler;
-        ArchiveHandler archive;
+        ArchiveEventHandler archive;
         WebSocketServer server;
         WebSocketClient client;
 
@@ -648,7 +768,7 @@ public class FileSyncSelfTest {
         Peer peer = new Peer();
         FileUtils.forceMkdir(dir);
         peer.listener = new FileListener(dir.getAbsolutePath(), BLOCK, TrueFileFilter.INSTANCE);
-        peer.archive = new ArchiveHandler(archiveRoot, peer.listener.getLocalFileAdaptor());
+        peer.archive = new ArchiveEventHandler(archiveRoot, peer.listener.getLocalFileAdaptor());
         peer.listener.addEventHandler(peer.archive);
         peer.handler = new FileEventHandler(peer.listener.getLocalFileAdaptor(), SyncMode.BIDIRECTIONAL);
         peer.handler.setDeleteRecorder(peer.archive);
@@ -696,7 +816,7 @@ public class FileSyncSelfTest {
         // 服务端打开中继：A 的改动才能经它到达 C
         remote.setMultiWaySync(server);
         if (null != archiveRoot) {
-            peer.archive = new ArchiveHandler(archiveRoot, peer.listener.getLocalFileAdaptor());
+            peer.archive = new ArchiveEventHandler(archiveRoot, peer.listener.getLocalFileAdaptor());
             peer.archive.setNodeInfo(nodeInfo);
             peer.handler.setDeleteRecorder(peer.archive);
             // 归档同时旁听回环抑制登记，拿到"这条路径是哪个节点写的"

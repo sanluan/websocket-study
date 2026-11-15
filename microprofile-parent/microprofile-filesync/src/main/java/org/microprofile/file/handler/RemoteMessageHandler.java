@@ -31,6 +31,8 @@ import org.microprofile.file.event.FileEvent;
 import org.microprofile.file.event.FileEvent.EventType;
 import org.microprofile.file.event.NodeInfo;
 import org.microprofile.file.event.EventSource;
+import org.microprofile.file.filter.FileRule;
+import org.microprofile.file.filter.FileRuleSet;
 import org.microprofile.file.message.BlockChecksum;
 import org.microprofile.file.message.FileChecksum;
 import org.microprofile.file.message.FileChecksumResult;
@@ -89,6 +91,16 @@ public class RemoteMessageHandler implements MessageHandler {
      * 本节点身份信息（默认启动时采集的本机信息），随事件报文发送出去
      */
     private volatile NodeInfo nodeInfo;
+    /**
+     * 本端<b>广播</b>规则（白名单/黑名单）：不在范围内的文件不公告、不回送内容、也不转发。
+     * 默认 {@link FileRuleSet#EMPTY}，即全部文件。
+     */
+    private volatile FileRuleSet sendRules = FileRuleSet.EMPTY;
+    /**
+     * 本端<b>接收</b>规则（白名单/黑名单）：不在范围内的对端变更直接丢弃。
+     * 默认 {@link FileRuleSet#EMPTY}，即全部文件。
+     */
+    private volatile FileRuleSet receiveRules = FileRuleSet.EMPTY;
     /**
      * 路径 -> 最近一次引入内容的来源节点（对账应答时沿用）
      */
@@ -188,6 +200,17 @@ public class RemoteMessageHandler implements MessageHandler {
             }
             // 内容（事件 0/1 的文件大小、块参数、块数据）从这里开始；事件 2/3/4 没有内容
             int contentIndex = startIndex;
+            // 大小规则需要的值：事件 0/1 的报文里带着整文件长度；删除事件没有大小也没有修改时间，
+            // 只能按纯文件名规则判定（目录事件不参与规则，始终放行）
+            long ruleSize = FileRule.UNSET;
+            if ((0 == header || 1 == header) && contentIndex + LENGTH_LONG <= payload.length) {
+                ruleSize = EncodeUtils.bype2Long(Arrays.copyOfRange(payload, contentIndex, contentIndex + LENGTH_LONG));
+            }
+            if (EventType.DIRECTORY_CREATE.getCode() != header && EventType.DIRECTORY_DELETE.getCode() != header
+                    && !canReceive(filePath, ruleSize, FileRule.UNSET)) {
+                // 接收规则拒绝：不落盘、不记来源、也不中继
+                return;
+            }
             EventType eventType = null;
             File file;
             switch (header) {
@@ -248,12 +271,15 @@ public class RemoteMessageHandler implements MessageHandler {
                     }
                 }
                 // 多向同步：把这次变更重新组包转发给其它客户端（排除来源会话），
-                // 报文里追加本节点为转发节点，于是 C 收到时看到的是 A 的信息 + "由本节点转发"
-                relayEvent(origin, header, filePath, source, Arrays.copyOfRange(payload, contentIndex, payload.length));
-                if (0 == header || 1 == header) {
-                    // 转发块内容之后，再给其它客户端一次元数据比对机会：
-                    // 若它们本来就和本端不一致（比如版本不同、缺文件），块级差异会被自动补齐
-                    relayChecksum(origin, filePath);
+                // 报文里追加本节点为转发节点，于是 C 收到时看到的是 A 的信息 + "由本节点转发"。
+                // 本端的广播规则同样约束中继：被排除的文件不往其它客户端转发。
+                if (canSend(filePath, ruleSize, FileRule.UNSET)) {
+                    relayEvent(origin, header, filePath, source, Arrays.copyOfRange(payload, contentIndex, payload.length));
+                    if (0 == header || 1 == header) {
+                        // 转发块内容之后，再给其它客户端一次元数据比对机会：
+                        // 若它们本来就和本端不一致（比如版本不同、缺文件），块级差异会被自动补齐
+                        relayChecksum(origin, filePath);
+                    }
                 }
             }
         }
@@ -437,6 +463,10 @@ public class RemoteMessageHandler implements MessageHandler {
             if (null != fileChecksum && null != fileChecksum.getFilePath()) {
                 FileChecksumResult result = null;
                 String filePath = fileChecksum.getFilePath();
+                if (!fileChecksum.isDirectory() && !canReceive(filePath, fileChecksum.getFileSize(), FileRule.UNSET)) {
+                    // 接收规则排除的文件：对端就算推介了也不比对、不创建、不要求内容
+                    return;
+                }
                 File file = localFileAdaptor.getFile(filePath);
                 if (fileChecksum.isDirectory()) {
                     if (!file.exists()) {
@@ -468,8 +498,10 @@ public class RemoteMessageHandler implements MessageHandler {
                             // 本地被对端清空，同样要抑制回传，否则两侧会互推空文件
                             markRemoteWrite(filePath);
                             eventHandler.cache(new FileEvent(EventType.FILE_MODIFY, filePath, file.lastModified(), 0));
-                            // 多向同步：其它客户端也要跟着清空
-                            relayRaw(session, payload);
+                            // 多向同步：其它客户端也要跟着清空（受本端广播规则约束）
+                            if (canSend(filePath, 0, file.lastModified())) {
+                                relayRaw(session, payload);
+                            }
                         }
                     } else if (!file.exists() && 0 == fileChecksum.getFileSize()) {
                         file.createNewFile();
@@ -504,6 +536,10 @@ public class RemoteMessageHandler implements MessageHandler {
             File file = localFileAdaptor.getFile(filePath);
             if (file.exists()) {
                 long newFileSize = EncodeUtils.bype2Long(Arrays.copyOfRange(payload, startIndex, startIndex + LENGTH_LONG));
+                if (!canReceive(filePath, newFileSize, FileRule.UNSET)) {
+                    // 接收规则排除的文件：不做块级比对，也就不会去要内容
+                    return;
+                }
                 startIndex += LENGTH_LONG;
                 int blockSize = EncodeUtils.bype2Int(Arrays.copyOfRange(payload, startIndex, startIndex + LENGTH_INT));
                 startIndex += LENGTH_INT;
@@ -557,6 +593,10 @@ public class RemoteMessageHandler implements MessageHandler {
             String filePath = new String(Arrays.copyOfRange(payload, HEADER_LENGTH, startIndex), Constants.DEFAULT_CHARSET);
             File file = localFileAdaptor.getFile(filePath);
             long oldFileSize = EncodeUtils.bype2Long(Arrays.copyOfRange(payload, startIndex, startIndex + LENGTH_LONG));
+            if (!canSend(filePath, 0 > oldFileSize ? oldFileSize : file.length(), file.lastModified())) {
+                // 广播规则排除的文件，对端要也不给
+                return;
+            }
             if (file.exists() && !file.isDirectory() && oldFileSize == file.length()) {
                 startIndex += LENGTH_LONG;
                 int blockSize = EncodeUtils.bype2Int(Arrays.copyOfRange(payload, startIndex, startIndex + LENGTH_INT));
@@ -598,6 +638,10 @@ public class RemoteMessageHandler implements MessageHandler {
             if (null != fileChecksumResult && null != fileChecksumResult.getFilePath()) {
                 String filePath = fileChecksumResult.getFilePath();
                 File file = localFileAdaptor.getFile(filePath);
+                if (!canSend(filePath, file.length(), file.lastModified())) {
+                    // 广播规则排除的文件，对端缺也不回送
+                    return;
+                }
                 if (file.exists() && !file.isDirectory()) {
                     int blockSize = localFileAdaptor.getBlockSize();
                     long fileSize = file.length();
@@ -1165,6 +1209,82 @@ public class RemoteMessageHandler implements MessageHandler {
      */
     public void setNodeInfo(NodeInfo nodeInfo) {
         this.nodeInfo = nodeInfo;
+    }
+
+    /**
+     * @return 本端广播（发送）规则
+     */
+    public FileRuleSet getSendRules() {
+        return sendRules;
+    }
+
+    /**
+     * 设置本端<b>广播</b>规则：不在范围内的文件不公告（包括对账时推介文件树）、不回送内容、也不中继。
+     * 传 null 或 {@link FileRuleSet#EMPTY} 表示全部文件都广播。
+     *
+     * @param sendRules
+     */
+    public void setSendRules(FileRuleSet sendRules) {
+        this.sendRules = null == sendRules ? FileRuleSet.EMPTY : sendRules;
+        log.info("发送规则：" + this.sendRules.describe());
+    }
+
+    /**
+     * @return 本端接收规则
+     */
+    public FileRuleSet getReceiveRules() {
+        return receiveRules;
+    }
+
+    /**
+     * 设置本端<b>接收</b>规则：不在范围内的对端变更（新建/修改/删除）直接丢弃，不落盘也不转发。
+     * 传 null 或 {@link FileRuleSet#EMPTY} 表示接收全部文件。
+     *
+     * @param receiveRules
+     */
+    public void setReceiveRules(FileRuleSet receiveRules) {
+        this.receiveRules = null == receiveRules ? FileRuleSet.EMPTY : receiveRules;
+        log.info("接收规则：" + this.receiveRules.describe());
+    }
+
+    /**
+     * 本端是否允许把这个文件广播出去
+     *
+     * @param filePath
+     *            相对路径
+     * @param fileSize
+     *            文件大小，{@link org.microprofile.file.filter.FileRule#UNSET} 表示未知
+     * @param lastModified
+     *            最后修改时间，{@link org.microprofile.file.filter.FileRule#UNSET} 表示未知
+     * @return
+     */
+    public boolean canSend(String filePath, long fileSize, long lastModified) {
+        FileRuleSet rules = sendRules;
+        if (rules.matches(filePath, fileSize, lastModified)) {
+            return true;
+        }
+        log.debug("发送规则拒绝：" + filePath + " （" + rules.describe() + "）");
+        return false;
+    }
+
+    /**
+     * 本端是否允许接收这个文件
+     *
+     * @param filePath
+     *            相对路径
+     * @param fileSize
+     *            文件大小，{@link org.microprofile.file.filter.FileRule#UNSET} 表示未知
+     * @param lastModified
+     *            最后修改时间，{@link org.microprofile.file.filter.FileRule#UNSET} 表示未知
+     * @return
+     */
+    public boolean canReceive(String filePath, long fileSize, long lastModified) {
+        FileRuleSet rules = receiveRules;
+        if (rules.matches(filePath, fileSize, lastModified)) {
+            return true;
+        }
+        log.debug("接收规则拒绝：" + filePath + " （" + rules.describe() + "）");
+        return false;
     }
 
     /**
