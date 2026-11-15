@@ -3,14 +3,22 @@ package org.microprofile.test;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Date;
+import java.util.List;
 import java.util.Random;
 import java.util.function.BooleanSupplier;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.filefilter.TrueFileFilter;
+import org.microprofile.file.archive.ArchiveEntry;
+import org.microprofile.file.archive.ArchiveHandler;
+import org.microprofile.file.archive.MergeReport;
 import org.microprofile.file.event.EventHandler;
 import org.microprofile.file.event.FileEvent;
+import org.microprofile.file.event.NodeInfo;
 import org.microprofile.file.handler.FileEventHandler;
 import org.microprofile.file.handler.LoggingEventHandler;
 import org.microprofile.file.handler.RemoteMessageHandler;
@@ -39,6 +47,8 @@ public class FileSyncSelfTest {
     private static final int PORT_MULTI = 20004;
     private static final int PORT_MULTI_OFF = 20005;
     private static final int PORT_LOG = 20006;
+    private static final int PORT_ARCHIVE = 20007;
+    private static final int PORT_NODE = 20008;
 
     private static int passed = 0;
     private static int failed = 0;
@@ -58,6 +68,11 @@ public class FileSyncSelfTest {
             testMultiWay(new File(root, "multiway"));
             testMultiWayOff(new File(root, "multiway-off"));
             testLoggingHandler(new File(root, "logging"));
+            testArchive(new File(root, "archive"));
+            testArchiveWithSync(new File(root, "archive-sync"));
+            testNodeInfo();
+            testEventCarriesNodeInfo(new File(root, "node-event"));
+            testNodeChain(new File(root, "node-chain"));
         } finally {
             System.out.println("RESULT: " + (0 == failed ? "PASS" : "FAIL") + " (" + passed + " passed, " + failed
                     + " failed)");
@@ -333,11 +348,261 @@ public class FileSyncSelfTest {
         }
     }
 
+    // ------------------------------------------------------------------ 归档
+
+    private static void testArchive(File root) throws Exception {
+        System.out.println("=== ARCHIVE (归档模式，本地) ===");
+        File syncDir = new File(root, "sync");
+        File archiveDir = new File(root, "archive");
+        File exportOld = new File(root, "export-old");
+        File exportNow = new File(root, "export-now");
+
+        write(new File(syncDir, "keep.txt"), "v1".getBytes("UTF-8"));
+        write(new File(syncDir, "sub/x.txt"), "x-v1".getBytes("UTF-8"));
+        byte[] big = randomBytes(200 * 1024, 41);
+        write(new File(syncDir, "big.bin"), big);
+
+        FileListener listener = new FileListener(syncDir.getAbsolutePath(), BLOCK, TrueFileFilter.INSTANCE);
+        ArchiveHandler archive = new ArchiveHandler(archiveDir, listener.getLocalFileAdaptor());
+        listener.addEventHandler(archive);
+
+        int initial = archive.initialFullArchive();
+        check("初次同步：全量归档现有文件", 3 == initial && 1 <= archive.getEntryCount("keep.txt"));
+        check("初次同步：大文件也存了全量基线", 1 <= archive.getEntryCount("big.bin"));
+        check("归档目录结构与文件一致", new File(archiveDir, "sub/x.txt").isDirectory());
+        long cutoffOld = System.currentTimeMillis();
+        Thread.sleep(1200);
+
+        listener.start();
+        try {
+            // 小文件修改：按日期存全量快照
+            write(new File(syncDir, "keep.txt"), "v2-longer-content".getBytes("UTF-8"));
+            check("小文件修改按日期存全量", waitFor(() -> 2 <= archive.getEntryCount("keep.txt"), 20000));
+            ArchiveEntry keepEntry = archive.getLatestEntry("keep.txt");
+            check("小文件快照是全量条目", null != keepEntry && ArchiveEntry.TYPE_FULL.equals(keepEntry.getType())
+                    && 17 == keepEntry.getFileSize());
+
+            // 大文件修改：只存改动过的块
+            byte[] big2 = big.clone();
+            for (int i = 100 * 1024; i < 100 * 1024 + 4096; i++) {
+                big2[i] = (byte) (big2[i] ^ 0x33);
+            }
+            write(new File(syncDir, "big.bin"), big2);
+            check("大文件修改只存改动块", waitFor(() -> {
+                ArchiveEntry entry = archive.getLatestEntry("big.bin");
+                return null != entry && ArchiveEntry.TYPE_PATCH.equals(entry.getType()) && null != entry.getBlocks()
+                        && 1 == entry.getBlocks().size();
+            }, 20000));
+            ArchiveEntry bigEntry = archive.getLatestEntry("big.bin");
+            check("块增量体积远小于整个文件", null != bigEntry && sumBlockBytes(archiveDir, bigEntry) <= BLOCK
+                    && sumBlockBytes(archiveDir, bigEntry) < big.length / 3);
+
+            // 删除：写成 <路径>.delete，内容是删除日期 + IP
+            FileUtils.forceDelete(new File(syncDir, "sub/x.txt"));
+            check("删除写成 .delete 记录", waitFor(() -> 0 < archive.getDeleteCount("sub/x.txt"), 20000));
+            String journal = new String(Files.readAllBytes(new File(archiveDir, "sub/x.txt.delete").toPath()), "UTF-8");
+            check("删除记录含日期与来源 IP",
+                    journal.matches("(?s).*\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d \\S+.*"));
+
+            // 合并：截止到改动之前
+            MergeReport old = archive.merge(exportOld, cutoffOld);
+            check("按日期合并：旧版本内容还原", "v1".equals(readText(new File(exportOld, "keep.txt"))));
+            check("按日期合并：当时还在的文件仍导出", new File(exportOld, "sub/x.txt").isFile()
+                    && "x-v1".equals(readText(new File(exportOld, "sub/x.txt"))));
+            check("按日期合并：结果统计", 3 == old.getExportedCount() && old.getDeleted().isEmpty());
+
+            // 合并：当前（最新全量）
+            MergeReport now = archive.export(exportNow);
+            check("导出当前全量：小文件是最新内容",
+                    contentEquals(new File(syncDir, "keep.txt"), new File(exportNow, "keep.txt")));
+            check("导出当前全量：大文件由基线+块增量精确还原",
+                    contentEquals(new File(syncDir, "big.bin"), new File(exportNow, "big.bin")));
+            check("导出当前全量：已删除文件不出现", !new File(exportNow, "sub/x.txt").exists()
+                    && now.getDeleted().contains("sub/x.txt") && 2 == now.getExportedCount());
+            System.out.println("[info] archive now: " + now);
+
+            // 按日期文本合并：yyyy-MM-dd 表示截止当天 23:59:59
+            String today = new SimpleDateFormat("yyyy-MM-dd").format(new Date());
+            MergeReport byDay = archive.merge(new File(root, "export-day"), today);
+            check("按日期文本合并（yyyy-MM-dd）",
+                    2 == byDay.getExportedCount() && byDay.getDeleted().contains("sub/x.txt"));
+        } finally {
+            listener.stop();
+        }
+    }
+
+    private static void testArchiveWithSync(File root) throws Exception {
+        System.out.println("=== ARCHIVE + SYNC (客户端变更归档到服务端) ===");
+        File dirS = new File(root, "s");
+        File dirC = new File(root, "c");
+        File archiveDir = new File(root, "archive");
+        File exportDir = new File(root, "export");
+        write(new File(dirS, "srv.txt"), "server-side".getBytes("UTF-8"));
+
+        Peer server = startServerWithArchive(dirS, PORT_ARCHIVE, archiveDir);
+        Peer client = connectClient(dirC, PORT_ARCHIVE, SyncMode.BIDIRECTIONAL);
+        ArchiveHandler archive = server.archive;
+        try {
+            waitSessions(server, 1);
+            check("归档模式不影响同步", waitEqual(new File(dirS, "srv.txt"), new File(dirC, "srv.txt"), 30000));
+
+            write(new File(dirC, "from-client.txt"), "client-1".getBytes("UTF-8"));
+            check("客户端新增到达服务端",
+                    waitEqual(new File(dirC, "from-client.txt"), new File(dirS, "from-client.txt"), 30000));
+            check("客户端新增被服务端归档", waitFor(() -> 0 < archive.getEntryCount("from-client.txt"), 25000));
+
+            write(new File(dirC, "from-client.txt"), "client-2-longer".getBytes("UTF-8"));
+            check("客户端修改被服务端归档", waitFor(() -> 2 <= archive.getEntryCount("from-client.txt"), 25000));
+
+            FileUtils.forceDelete(new File(dirC, "from-client.txt"));
+            check("客户端删除到达服务端", waitFor(() -> !new File(dirS, "from-client.txt").exists(), 25000));
+            check("客户端删除被归档", waitFor(() -> 0 < archive.getDeleteCount("from-client.txt"), 25000));
+            String journalLine = waitContains(new File(archiveDir, "from-client.txt.delete"), 20000,
+                    NodeInfo.local().getNodeId(), NodeInfo.local().getHostName());
+            check("删除记录带对端节点信息且只记一条",
+                    null != journalLine && 1 == journalLine.split("\\r?\\n").length);
+            check("直连删除的删除记录没有转发标记", null != journalLine && journalLine.indexOf("via ") < 0);
+
+            MergeReport report = archive.export(exportDir);
+            check("服务端归档可导出当前全量", contentEquals(new File(dirS, "srv.txt"), new File(exportDir, "srv.txt"))
+                    && !new File(exportDir, "from-client.txt").exists() && report.getDeleted().contains("from-client.txt"));
+        } finally {
+            client.stop();
+            server.stop();
+        }
+    }
+
+    // ---------------------------------------------------------------- 节点身份
+
+    /**
+     * 节点身份采集：启动时采集本机信息并缓存。
+     */
+    private static void testNodeInfo() throws Exception {
+        System.out.println("=== NODE INFO ===");
+        NodeInfo local = NodeInfo.local();
+        check("NodeInfo 缓存同一实例", local == NodeInfo.local());
+        check("采集到计算机名", null != local.getHostName() && !local.getHostName().isEmpty());
+        check("采集到网卡地址", !local.firstAddress().isEmpty());
+        check("采集到节点标识", null != local.getNodeId() && local.getNodeId().contains(local.getHostName()));
+        check("采集到用户/操作系统/Java 版本",
+                null != local.getUserName() && null != local.getOs() && null != local.getJavaVersion());
+        check("采集到进程号与启动时间", 0 < local.getPid() && 0 < local.getStartTime());
+        System.out.println("  nodeInfo=" + local);
+    }
+
+    /**
+     * 本地事件必须带上监听器设定的节点信息（离线场景，不需要网络）。
+     */
+    private static void testEventCarriesNodeInfo(File root) throws Exception {
+        System.out.println("=== EVENT CARRIES NODE INFO ===");
+        NodeInfo custom = new NodeInfo("node-X", "host-X", "10.9.9.9");
+        File dir = new File(root, "dir");
+        FileUtils.forceMkdir(dir);
+        final List<FileEvent> captured = new ArrayList<>();
+        EventHandler recorder = new EventHandler() {
+            @Override
+            public void handle(FileEvent event) {
+                synchronized (captured) {
+                    captured.add(event);
+                }
+            }
+
+            @Override
+            public void cache(FileEvent event) {
+                // 不做回环抑制
+            }
+        };
+        FileListener listener = new FileListener(dir.getAbsolutePath(), BLOCK, TrueFileFilter.INSTANCE);
+        listener.setNodeInfo(custom);
+        listener.addEventHandler(recorder);
+        listener.start();
+        try {
+            write(new File(dir, "hello.txt"), "hello".getBytes("UTF-8"));
+            boolean handled = waitFor(() -> {
+                synchronized (captured) {
+                    return !captured.isEmpty();
+                }
+            }, 20000);
+            FileEvent event;
+            synchronized (captured) {
+                event = captured.isEmpty() ? null : captured.get(0);
+            }
+            check("本地事件携带监听器设定的节点信息",
+                    handled && null != event && "node-X".equals(event.getNodeInfo().getNodeId()));
+            check("本地事件来源标签可读（计算机名/首个 IP）",
+                    null != event && "host-X/10.9.9.9".equals(event.getSourceLabel()));
+            check("本地事件没有转发节点", null != event && event.getSourceLabel().indexOf("via ") < 0);
+        } finally {
+            listener.stop();
+        }
+    }
+
+    /**
+     * A → S → C 链路：C 的删除记录是 A 的节点信息 + "由 S 转发"；S 自己的记录是 A 但无转发标记。
+     */
+    private static void testNodeChain(File root) throws Exception {
+        System.out.println("=== NODE CHAIN A -> S -> C ===");
+        NodeInfo nodeA = new NodeInfo("node-A", "host-A", "10.0.0.1");
+        NodeInfo nodeS = new NodeInfo("node-S", "host-S", "10.0.0.2");
+        NodeInfo nodeC = new NodeInfo("node-C", "host-C", "10.0.0.3");
+        File dirA = new File(root, "a");
+        File dirS = new File(root, "s");
+        File dirC = new File(root, "c");
+        File archiveS = new File(root, "archive-s");
+        File archiveC = new File(root, "archive-c");
+
+        Peer server = startNode(dirS, nodeS, true, PORT_NODE, archiveS);
+        Peer clientA = startNode(dirA, nodeA, false, PORT_NODE, null);
+        Peer clientC = startNode(dirC, nodeC, false, PORT_NODE, archiveC);
+        try {
+            waitSessions(server, 2);
+            write(new File(dirA, "chain.txt"), randomBytes(200, 20261115L));
+            check("A 的创建经 S 中继到达 C",
+                    waitEqual(new File(dirA, "chain.txt"), new File(dirC, "chain.txt"), 30000));
+            check("C 归档到 chain.txt 的最新条目",
+                    waitFor(() -> null != clientC.archive.getLatestEntry("chain.txt"), 20000));
+            ArchiveEntry entryC = clientC.archive.getLatestEntry("chain.txt");
+            check("C 的归档条目记录的是 A 的节点信息", null != entryC && "10.0.0.1".equals(entryC.getIp())
+                    && "host-A".equals(entryC.getHostName()) && "node-A".equals(entryC.getNodeId()));
+            check("C 的归档条目记录由 S 转发",
+                    null != entryC && null != entryC.getRelayers() && entryC.getRelayers().contains("10.0.0.2"));
+            check("S 也有 chain.txt 的归档条目",
+                    waitFor(() -> null != server.archive.getLatestEntry("chain.txt"), 20000));
+            ArchiveEntry entryS = server.archive.getLatestEntry("chain.txt");
+            check("S 的归档条目记录的是 A 的节点信息且无转发链", null != entryS && "node-A".equals(entryS.getNodeId())
+                    && (null == entryS.getRelayers() || entryS.getRelayers().isEmpty()));
+            // 首轮/第二轮对账会互相推一次文件树，等它彻底安静下来，删除动作才不会被"推回来"的文件打断
+            waitQuiet(new File(dirA, "chain.txt"), 3000, 40000);
+
+            FileUtils.forceDelete(new File(dirA, "chain.txt"));
+            check("删除经 S 中继到达 C", waitFor(() -> !new File(dirC, "chain.txt").exists(), 30000));
+
+            File journalC = new File(archiveC, "chain.txt.delete");
+            // 本地监听可能先把删除记成本节点，协议层随后用原始来源节点替换，所以等到带着 A 的信息再断言
+            String lineC = waitContains(journalC, 20000, "10.0.0.1", "host-A", "node-A", "via 10.0.0.2");
+            check("C 的删除记录是 A 的节点信息并标明由 S 转发", null != lineC);
+            check("C 的删除记录只记一条", null != lineC && 1 == lineC.split("\\r?\\n").length);
+            check("C 的删除记录没有把本节点当成来源", null != lineC && lineC.indexOf("node-C") < 0);
+
+            File journalS = new File(archiveS, "chain.txt.delete");
+            String lineS = waitContains(journalS, 20000, "10.0.0.1", "host-A", "node-A");
+            check("S 的删除记录也是 A 的节点信息", null != lineS);
+            check("S 的删除记录没有转发标记（A 直连）", null != lineS && lineS.indexOf("via ") < 0);
+            System.out.println("  C journal: " + lineC);
+            System.out.println("  S journal: " + lineS);
+        } finally {
+            clientA.stop();
+            clientC.stop();
+            server.stop();
+        }
+    }
+
     // ---------------------------------------------------------------- 工具
 
     private static class Peer {
         FileListener listener;
         FileEventHandler handler;
+        ArchiveHandler archive;
         WebSocketServer server;
         WebSocketClient client;
 
@@ -376,8 +641,28 @@ public class FileSyncSelfTest {
         return peer;
     }
 
-    private static Peer connectClient(File dir, int port, SyncMode mode, EventHandler... extras) throws Exception {
+    /**
+     * 服务端 + 归档处理器（归档与同步并行工作）。
+     */
+    private static Peer startServerWithArchive(File dir, int port, File archiveRoot) throws Exception {
         Peer peer = new Peer();
+        FileUtils.forceMkdir(dir);
+        peer.listener = new FileListener(dir.getAbsolutePath(), BLOCK, TrueFileFilter.INSTANCE);
+        peer.archive = new ArchiveHandler(archiveRoot, peer.listener.getLocalFileAdaptor());
+        peer.listener.addEventHandler(peer.archive);
+        peer.handler = new FileEventHandler(peer.listener.getLocalFileAdaptor(), SyncMode.BIDIRECTIONAL);
+        peer.handler.setDeleteRecorder(peer.archive);
+        peer.handler.setEchoObserver(peer.archive);
+        RemoteMessageHandler remote = peer.handler.getRemoteMessageHandler(true);
+        peer.server = new WebSocketServer(port, 1, remote, 1000);
+        peer.server.asyncListen();
+        peer.listener.addEventHandler(peer.handler);
+        peer.archive.initialFullArchive();
+        peer.listener.start();
+        return peer;
+    }
+
+    private static Peer connectClient(File dir, int port, SyncMode mode, EventHandler... extras) throws Exception {        Peer peer = new Peer();
         FileUtils.forceMkdir(dir);
         peer.listener = new FileListener(dir.getAbsolutePath(), BLOCK, TrueFileFilter.INSTANCE);
         peer.handler = new FileEventHandler(peer.listener.getLocalFileAdaptor(), mode);
@@ -387,6 +672,46 @@ public class FileSyncSelfTest {
         for (EventHandler extra : extras) {
             peer.listener.addEventHandler(extra);
         }
+        peer.listener.start();
+        return peer;
+    }
+
+    /**
+     * 起一个带明确节点身份的端点（服务端或客户端），可选挂归档处理器。
+     * <p>
+     * 三个端点跑在同一个 JVM 里，默认的 {@code NodeInfo.local()} 会是同一个，所以这里显式指定身份，
+     * 才能区分出 A / S / C 三个逻辑节点。
+     * </p>
+     */
+    private static Peer startNode(File dir, NodeInfo nodeInfo, boolean server, int port, File archiveRoot)
+            throws Exception {
+        Peer peer = new Peer();
+        FileUtils.forceMkdir(dir);
+        peer.listener = new FileListener(dir.getAbsolutePath(), BLOCK, TrueFileFilter.INSTANCE);
+        peer.listener.setNodeInfo(nodeInfo);
+        peer.handler = new FileEventHandler(peer.listener.getLocalFileAdaptor(), SyncMode.BIDIRECTIONAL);
+        peer.handler.setNodeInfo(nodeInfo);
+        RemoteMessageHandler remote = peer.handler.getRemoteMessageHandler(server);
+        remote.setNodeInfo(nodeInfo);
+        // 服务端打开中继：A 的改动才能经它到达 C
+        remote.setMultiWaySync(server);
+        if (null != archiveRoot) {
+            peer.archive = new ArchiveHandler(archiveRoot, peer.listener.getLocalFileAdaptor());
+            peer.archive.setNodeInfo(nodeInfo);
+            peer.handler.setDeleteRecorder(peer.archive);
+            // 归档同时旁听回环抑制登记，拿到"这条路径是哪个节点写的"
+            peer.handler.setEchoObserver(peer.archive);
+            peer.listener.addEventHandler(peer.archive);
+            peer.archive.initialFullArchive();
+        }
+        if (server) {
+            peer.server = new WebSocketServer(port, 1, remote, 1000);
+            peer.server.asyncListen();
+        } else {
+            peer.client = new WebSocketClient("localhost", port, "/", remote);
+            peer.client.asyncListen();
+        }
+        peer.listener.addEventHandler(peer.handler);
         peer.listener.start();
         return peer;
     }
@@ -423,7 +748,88 @@ public class FileSyncSelfTest {
         if (a.length() != b.length()) {
             return false;
         }
-        return Arrays.equals(Files.readAllBytes(a.toPath()), Files.readAllBytes(b.toPath()));
+        try {
+            return Arrays.equals(Files.readAllBytes(a.toPath()), Files.readAllBytes(b.toPath()));
+        } catch (IOException e) {
+            // 对端还在写、Windows 上文件被占用：当成"还没同步好"，让调用方稍后重试
+            return false;
+        }
+    }
+
+    private static String readText(File file) throws IOException {
+        if (!file.isFile()) {
+            return null;
+        }
+        try {
+            return new String(Files.readAllBytes(file.toPath()), "UTF-8");
+        } catch (IOException e) {
+            // 文件被占用时返回 null，调用方用 waitFor 重试
+            return null;
+        }
+    }
+
+    /**
+     * 轮询等到文件内容包含全部关键字，返回去掉首尾空白的全文；超时返回 null。
+     */
+    private static String waitContains(File file, long timeoutMillis, String... needles) throws Exception {
+        long deadline = System.currentTimeMillis() + timeoutMillis;
+        while (System.currentTimeMillis() < deadline) {
+            String text = readText(file);
+            if (null != text) {
+                boolean all = true;
+                for (String needle : needles) {
+                    if (0 > text.indexOf(needle)) {
+                        all = false;
+                        break;
+                    }
+                }
+                if (all) {
+                    return text.trim();
+                }
+            }
+            Thread.sleep(200);
+        }
+        return null;
+    }
+
+    /**
+     * 等到文件的"长度+修改时间"连续 quietMillis 毫秒没变化，说明对账推送已经停了。
+     */
+    private static void waitQuiet(File file, long quietMillis, long timeoutMillis) throws Exception {
+        long deadline = System.currentTimeMillis() + timeoutMillis;
+        long lastStamp = -2;
+        long stableSince = 0;
+        while (System.currentTimeMillis() < deadline) {
+            long stamp = file.exists() ? (file.length() ^ file.lastModified()) : -1;
+            if (stamp == lastStamp) {
+                if (0 == stableSince) {
+                    stableSince = System.currentTimeMillis();
+                } else if (quietMillis <= System.currentTimeMillis() - stableSince) {
+                    return;
+                }
+            } else {
+                lastStamp = stamp;
+                stableSince = 0;
+            }
+            Thread.sleep(200);
+        }
+    }
+
+    /**
+     * @return 该归档条目的块文件总字节数（用来证明"只存了改动的块"）
+     */
+    private static long sumBlockBytes(File archiveDir, ArchiveEntry entry) {
+        long total = 0;
+        File[] files = new File(archiveDir, entry.getPath()).listFiles();
+        if (null == files) {
+            return 0;
+        }
+        for (File file : files) {
+            if (file.getName().startsWith(entry.getName() + ".b")) {
+                total += file.length();
+            }
+        }
+        return total;
     }
 
     private static void write(File file, byte[] data) throws IOException {

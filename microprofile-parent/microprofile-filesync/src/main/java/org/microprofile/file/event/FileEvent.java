@@ -1,17 +1,82 @@
 package org.microprofile.file.event;
 
+import java.util.List;
+
 public class FileEvent {
     private EventType eventType;
     private String filePath;
     private long lastModify;
     private long fileSize;
+    /**
+     * 产生这条变更的节点（附加信息，不参与 equals/hashCode）
+     */
+    private NodeInfo nodeInfo;
+    /**
+     * 转发链：这条变更经过哪些节点转过来（本地直接产生的为空）
+     */
+    private List<NodeInfo> relayers;
 
     public FileEvent(EventType eventType, String filePath, long lastModify, long fileSize) {
+        this(eventType, filePath, lastModify, fileSize, null, null);
+    }
+
+    public FileEvent(EventType eventType, String filePath, long lastModify, long fileSize, NodeInfo nodeInfo) {
+        this(eventType, filePath, lastModify, fileSize, nodeInfo, null);
+    }
+
+    public FileEvent(EventType eventType, String filePath, long lastModify, long fileSize, NodeInfo nodeInfo,
+            List<NodeInfo> relayers) {
         super();
         this.eventType = eventType;
         this.filePath = filePath;
         this.lastModify = lastModify;
         this.fileSize = fileSize;
+        this.nodeInfo = nodeInfo;
+        this.relayers = relayers;
+    }
+
+    /**
+     * @return 产生这条变更的节点（可能为 null，表示来源未知）
+     */
+    public NodeInfo getNodeInfo() {
+        return nodeInfo;
+    }
+
+    /**
+     * @param nodeInfo
+     */
+    public void setNodeInfo(NodeInfo nodeInfo) {
+        this.nodeInfo = nodeInfo;
+    }
+
+    /**
+     * @return 转发链
+     */
+    public List<NodeInfo> getRelayers() {
+        return relayers;
+    }
+
+    /**
+     * @param relayers
+     */
+    public void setRelayers(List<NodeInfo> relayers) {
+        this.relayers = relayers;
+    }
+
+    /**
+     * @return "来源节点 via 转发节点1 via 转发节点2" 的可读文本
+     */
+    public String getSourceLabel() {
+        StringBuilder builder = new StringBuilder(null == nodeInfo ? "unknown" : nodeInfo.describe());
+        if (null != relayers) {
+            for (NodeInfo relayer : relayers) {
+                if (null == relayer) {
+                    continue;
+                }
+                builder.append(" via ").append(relayer.describe());
+            }
+        }
+        return builder.toString();
     }
 
     /**
@@ -80,8 +145,14 @@ public class FileEvent {
     @Override
     public String toString() {
         return "FileEvent [eventType=" + eventType + ", filePath=" + filePath + ", lastModify=" + lastModify + ", fileSize="
-                + fileSize + "]";
+                + fileSize + ", source=" + getSourceLabel() + "]";
     }
+
+    /*
+     * 注意：nodeInfo/relayers 故意不参与 hashCode/equals。
+     * 回环抑制的"精确匹配"队列用 equals 判断"这条事件是不是刚才对端写出来的同一条"，
+     * 而本地监听重新报出来的事件带的是本节点身份，把身份比进去就永远匹配不上。
+     */
 
     /*
      * (non-Javadoc)

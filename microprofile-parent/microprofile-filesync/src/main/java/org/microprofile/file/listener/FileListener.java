@@ -12,6 +12,7 @@ import org.apache.commons.io.monitor.FileAlterationObserver;
 import org.microprofile.file.event.EventHandler;
 import org.microprofile.file.event.FileEvent;
 import org.microprofile.file.event.FileEvent.EventType;
+import org.microprofile.file.event.NodeInfo;
 import org.microprofile.file.handler.LocalFileAdaptor;
 
 /**
@@ -36,6 +37,10 @@ public class FileListener implements FileAlterationListener {
     private LocalFileAdaptor localFileAdaptor;
     private long pollingInterval = DEFAULT_POLLING_INTERVAL;
     private boolean started;
+    /**
+     * 本节点身份：启动监听时采集一次并缓存，写进每一条 FileEvent
+     */
+    private volatile NodeInfo nodeInfo;
 
     /**
      * @param listenPath
@@ -79,12 +84,34 @@ public class FileListener implements FileAlterationListener {
     private void process(EventType eventType, File file) {
         if (null != eventHandlers) {
             String filePath = localFileAdaptor.getRelativeFilePath(file);
+            NodeInfo source = getNodeInfo();
             for (EventHandler eventHandler : eventHandlers) {
                 // FileEvent 的签名是 (eventType, filePath, lastModify, fileSize)，
                 // 原来这里传成了 (size, lastModified)，导致下游把上万兆的时间戳当作文件大小
-                eventHandler.handle(new FileEvent(eventType, filePath, file.lastModified(), file.length()));
+                eventHandler.handle(new FileEvent(eventType, filePath, file.lastModified(), file.length(), source));
             }
         }
+    }
+
+    /**
+     * @return 本节点身份信息（第一次调用时采集并缓存：计算机名、所有网卡地址、MAC、用户、操作系统等）
+     */
+    public NodeInfo getNodeInfo() {
+        NodeInfo info = nodeInfo;
+        if (null == info) {
+            info = NodeInfo.local();
+            nodeInfo = info;
+        }
+        return info;
+    }
+
+    /**
+     * 指定本节点身份（默认为采集到的本机信息；容器/多实例/测试时可自定义）
+     *
+     * @param nodeInfo
+     */
+    public void setNodeInfo(NodeInfo nodeInfo) {
+        this.nodeInfo = nodeInfo;
     }
 
     @Override
@@ -176,6 +203,8 @@ public class FileListener implements FileAlterationListener {
      * @throws Exception
      */
     public void start() throws Exception {
+        // 启动监听时把节点身份采集下来并缓存，之后每条事件都带这份信息
+        getNodeInfo();
         fileMonitor = new FileAlterationMonitor(pollingInterval);
         fileMonitor.addObserver(observer);
         fileMonitor.start();

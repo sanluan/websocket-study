@@ -17,7 +17,7 @@ public class MessageUtils {
     private static final Queue<SecureRandom> randoms = new ConcurrentLinkedQueue<SecureRandom>();
 
     public static byte[] generateMask() {
-        SecureRandom sr = (SecureRandom) randoms.poll();
+        SecureRandom sr = randoms.poll();
         if (sr == null) {
             try {
                 sr = SecureRandom.getInstance("SHA1PRNG");

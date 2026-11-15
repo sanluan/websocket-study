@@ -10,6 +10,7 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.microprofile.file.event.EventHandler;
 import org.microprofile.file.event.FileEvent;
+import org.microprofile.file.event.NodeInfo;
 
 /**
  * 日志记录处理器：把经过 {@link EventHandler} 的文件事件记到日志，并按类型累计计数。
@@ -139,6 +140,20 @@ public class LoggingEventHandler implements EventHandler {
         builder.append(" time=").append(format(event.getLastModify()));
         if (null != event.getEventType() && event.getEventType().isDirectory()) {
             builder.append(" directory");
+        }
+        builder.append(" source=").append(null == event.getNodeInfo() ? "unknown" : event.getNodeInfo().describe());
+        if (null != event.getRelayers() && !event.getRelayers().isEmpty()) {
+            builder.append(" relayedBy=");
+            int index = 0;
+            for (NodeInfo relayer : event.getRelayers()) {
+                if (null == relayer) {
+                    continue;
+                }
+                if (0 < index++) {
+                    builder.append(',');
+                }
+                builder.append(relayer.describe());
+            }
         }
         return builder.toString();
     }

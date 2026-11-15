@@ -238,6 +238,13 @@ public class LocalFileAdaptor {
     }
 
     /**
+     * @return the basePath 同步根目录
+     */
+    public String getBasePath() {
+        return basePath;
+    }
+
+    /**
      * @return the blockSize
      */
     public int getBlockSize() {

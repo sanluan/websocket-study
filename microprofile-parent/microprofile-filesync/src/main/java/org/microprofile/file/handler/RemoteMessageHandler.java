@@ -25,9 +25,12 @@ import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.microprofile.common.constant.Constants;
 import org.microprofile.common.utils.EncodeUtils;
+import org.microprofile.file.archive.DeleteRecorder;
 import org.microprofile.file.event.EventHandler;
 import org.microprofile.file.event.FileEvent;
 import org.microprofile.file.event.FileEvent.EventType;
+import org.microprofile.file.event.NodeInfo;
+import org.microprofile.file.event.EventSource;
 import org.microprofile.file.message.BlockChecksum;
 import org.microprofile.file.message.FileChecksum;
 import org.microprofile.file.message.FileChecksumResult;
@@ -58,6 +61,7 @@ public class RemoteMessageHandler implements MessageHandler {
     private static int LENGTH_SHORT = 2;
     private static int LENGTH_INT = 4;
     private static int LENGTH_LONG = 8;
+    private static final byte[] EMPTY_BYTE = new byte[0];
     private boolean master = false;
     private Lock lock = new ReentrantLock();
 
@@ -73,11 +77,24 @@ public class RemoteMessageHandler implements MessageHandler {
     /**
      * 多向同步（中继）：一个服务端 + 多个客户端时，把某个客户端发来的变更转发给同一服务端的其它客户端。
      * <p>
-     * 默认关闭，保持"每个客户端各自与服务端镜像"的原语义；按需
-     * {@link #setMultiWaySync(boolean)} 打开。
+     * 默认关闭，保持"每个客户端各自与服务端镜像"的原语义；按需 {@link #setMultiWaySync(boolean)} 打开。
      * </p>
      */
     private volatile boolean multiWaySync = false;
+    /**
+     * 删除记录器（归档模式用）：把"谁在什么时候删了哪个文件"记下来
+     */
+    private volatile DeleteRecorder deleteRecorder;
+    /**
+     * 本节点身份信息（默认启动时采集的本机信息），随事件报文发送出去
+     */
+    private volatile NodeInfo nodeInfo;
+    /**
+     * 路径 -> 最近一次引入内容的来源节点（对账应答时沿用）
+     */
+    private final Map<String, OriginRecord> origins = new ConcurrentHashMap<>();
+    private static final long ORIGIN_TTL_MILLIS = 60000L;
+    private static final int MAX_ORIGINS = 10000;
     /**
      * 对端写入本地后，抑制“本端变更再次回传”的时间窗（毫秒），应大于本地监听轮询间隔
      */
@@ -155,6 +172,22 @@ public class RemoteMessageHandler implements MessageHandler {
         int startIndex = HEADER_LENGTH + filePathLength;
         if (startIndex <= payload.length) {
             String filePath = new String(Arrays.copyOfRange(payload, HEADER_LENGTH, startIndex), Constants.DEFAULT_CHARSET);
+            // 路径之后可能带一段"来源信息"：4B 长度 + JSON（谁产生的变更 + 经过哪些节点转发）。
+            // 是否带这段由路径长度 short 的最高位标记，不带就是老格式。
+            EventSource source = null;
+            if (hasSource(payload)) {
+                int sourceLength = startIndex + LENGTH_INT <= payload.length
+                        ? EncodeUtils.bype2Int(Arrays.copyOfRange(payload, startIndex, startIndex + LENGTH_INT)) : -1;
+                if (0 > sourceLength || startIndex + LENGTH_INT + sourceLength > payload.length) {
+                    // 标记位说有来源段，却找不到它：报文已损坏，直接丢弃，避免按错误的偏移解析文件内容
+                    log.warn(filePath + " 来源信息长度非法，已丢弃");
+                    return;
+                }
+                source = readSource(payload, startIndex + LENGTH_INT, sourceLength);
+                startIndex += LENGTH_INT + sourceLength;
+            }
+            // 内容（事件 0/1 的文件大小、块参数、块数据）从这里开始；事件 2/3/4 没有内容
+            int contentIndex = startIndex;
             EventType eventType = null;
             File file;
             switch (header) {
@@ -197,10 +230,26 @@ public class RemoteMessageHandler implements MessageHandler {
             if (null != eventType) {
                 // 先登记“对端写入”，再交给回环抑制，避免本端监听把这次写入当成用户修改再回传
                 markRemoteWrite(filePath);
-                eventHandler.cache(new FileEvent(eventType, filePath, file.lastModified(), file.length()));
-                // 多向同步：把这次变更原样转发给其它客户端（排除来源会话），
-                // 于是客户端 A 的改动可以经由服务端到达 B、C
-                relay(origin, payload);
+                NodeInfo eventSource = null == source ? null : source.getSource();
+                if (null != eventSource && null != source && null != source.getRelayers()) {
+                    // 让"来源节点"自己也带上转发链，归档条目/删除记录就都看得到“由谁转发”
+                    eventSource = eventSource.copy();
+                    eventSource.setRelayers(source.getRelayers());
+                }
+                eventHandler.cache(new FileEvent(eventType, filePath, file.lastModified(), file.length(), eventSource,
+                        null == source ? null : source.getRelayers()));
+                // 记住这条路径的来源，之后本端给别的节点重发它的内容时沿用
+                recordOrigin(filePath, source, eventSource);
+                if (EventType.FILE_DELETE == eventType || EventType.DIRECTORY_DELETE == eventType) {
+                    DeleteRecorder recorder = deleteRecorder;
+                    if (null != recorder) {
+                        // 归档模式：删除记录要带上“谁删的”，由报文里的来源信息给出，跨节点转发后仍是原始节点的信息
+                        recorder.recordDelete(filePath, eventSource);
+                    }
+                }
+                // 多向同步：把这次变更重新组包转发给其它客户端（排除来源会话），
+                // 报文里追加本节点为转发节点，于是 C 收到时看到的是 A 的信息 + "由本节点转发"
+                relayEvent(origin, header, filePath, source, Arrays.copyOfRange(payload, contentIndex, payload.length));
                 if (0 == header || 1 == header) {
                     // 转发块内容之后，再给其它客户端一次元数据比对机会：
                     // 若它们本来就和本端不一致（比如版本不同、缺文件），块级差异会被自动补齐
@@ -211,18 +260,129 @@ public class RemoteMessageHandler implements MessageHandler {
     }
 
     /**
-     * 多向同步（中继）：把报文原样转发给同一服务端上的其它会话。
+     * 解析报文里的来源信息
+     *
+     * @param payload
+     * @param offset
+     * @param length
+     * @return 来源信息；JSON 损坏时返回 null（内容偏移已由调用方自行跳过）
+     */
+    private EventSource readSource(byte[] payload, int offset, int length) {
+        try {
+            return objectMapper.readValue(payload, offset, length, EventSource.class);
+        } catch (IOException e) {
+            log.warn("事件来源信息解析失败，已按无来源处理", e);
+            return null;
+        }
+    }
+
+    /**
+     * 记住"这条路径最近一次的内容是哪个节点引入的"。
      * <p>
-     * 只有 {@link #isMultiWaySync()} 打开、本端允许发送、并且存在其它会话时才真正转发；
-     * 一对一的场景下没有其它会话，转发是空操作。
+     * 对账里本端给对端重发文件内容时（12/13 号报文触发的应答），这些内容其实是别人刚同步过来的，
+     * 沿用这里的来源，对端就不会把"重发者"当成内容的原始节点。
+     * </p>
+     *
+     * @param filePath
+     * @param source
+     *            报文里的原始来源信息（可能为 null）
+     * @param eventSource
+     *            解析出来的来源节点（含转发链）
+     */
+    private void recordOrigin(String filePath, EventSource source, NodeInfo eventSource) {
+        if (null == filePath || null == eventSource) {
+            return;
+        }
+        if (MAX_ORIGINS < origins.size()) {
+            origins.clear();
+        }
+        EventSource context = null == source ? new EventSource() : source.copy();
+        context.setSource(eventSource.copy());
+        origins.put(filePath, new OriginRecord(context, System.currentTimeMillis()));
+    }
+
+    /**
+     * @param filePath
+     * @return 这条路径内容的来源；没有记录（本端自己的文件）时用本节点身份
+     */
+    private EventSource originSource(String filePath) {
+        OriginRecord record = null == filePath ? null : origins.get(filePath);
+        if (null != record && ORIGIN_TTL_MILLIS >= System.currentTimeMillis() - record.getTime()) {
+            return record.getSource().copy();
+        }
+        return new EventSource(getNodeInfo(), null);
+    }
+
+    private static class OriginRecord {
+        private final EventSource source;
+        private final long time;
+
+        OriginRecord(EventSource source, long time) {
+            this.source = source;
+            this.time = time;
+        }
+
+        EventSource getSource() {
+            return source;
+        }
+
+        long getTime() {
+            return time;
+        }
+    }
+
+    /**
+     * @param deleteRecorder
+     *            删除记录器（归档模式直接把 {@code ArchiveHandler} 传进来即可）
+     */
+    public void setDeleteRecorder(DeleteRecorder deleteRecorder) {
+        this.deleteRecorder = deleteRecorder;
+    }
+
+    /**
+     * 多向同步（中继）：把事件报文重新组包转发给同一服务端上的其它会话。
+     * <p>
+     * 与"原样转发"的区别：报文里带上原始的来源节点信息，并追加本节点到转发链，
+     * 因此经过服务端之后，下游客户端拿到的仍然是原始节点的信息，同时知道是"本节点转发"的。
      * </p>
      *
      * @param origin
      *            报文来源会话，转发时排除
+     * @param code
+     *            事件码
+     * @param filePath
+     * @param source
+     *            原始来源信息（可能为 null）
+     * @param content
+     *            事件内容（事件 0/1 为文件大小+块参数+块数据，其余为空）
+     */
+    private void relayEvent(Session origin, byte code, String filePath, EventSource source, byte[] content) {
+        if (!canRelay() || null == filePath) {
+            return;
+        }
+        EventSource forwarded = null == source ? new EventSource() : source.copy();
+        forwarded.addRelayer(getNodeInfo());
+        int forwardedCount = 0;
+        for (Session session : sessionMap.values()) {
+            if (null != origin && origin.getId().equals(session.getId())) {
+                continue;
+            }
+            send(session, buildPayload(code, filePath, forwarded, content));
+            forwardedCount++;
+        }
+        if (0 < forwardedCount) {
+            log.info("relayed " + code + " " + filePath + " (" + forwarded.describe() + ") to " + forwardedCount + " peer(s)");
+        }
+    }
+
+    /**
+     * 多向同步（中继）：报文原样转发（用于不带来源信息的 JSON 报文，如文件校验和）。
+     *
+     * @param origin
      * @param payload
      */
-    private void relay(Session origin, byte[] payload) {
-        if (!multiWaySync || !syncMode.isSendEnabled() || 1 >= sessionMap.size()) {
+    private void relayRaw(Session origin, byte[] payload) {
+        if (!canRelay()) {
             return;
         }
         int forwarded = 0;
@@ -238,11 +398,14 @@ public class RemoteMessageHandler implements MessageHandler {
         }
     }
 
+    private boolean canRelay() {
+        return multiWaySync && syncMode.isSendEnabled() && 1 < sessionMap.size();
+    }
+
     /**
      * 多向同步：给其它会话补一次文件元数据（不带整文件校验和），让它们各自做块级比对。
      * <p>
-     * 只靠转发块内容是不够的：对端如果持有的是另一个版本，收到的几块补丁未必能补齐差异。
-     * 补一次元数据后，对端会按需要请求缺的块，最终收敛到本端内容。
+     * 只靠转发块内容是不够的：对端如果持有的是另一个版本，收到的几块补丁未必能补齐差异。 补一次元数据后，对端会按需要请求缺的块，最终收敛到本端内容。
      * </p>
      *
      * @param origin
@@ -279,10 +442,10 @@ public class RemoteMessageHandler implements MessageHandler {
                     if (!file.exists()) {
                         file = localFileAdaptor.createDirectory(filePath);
                         markRemoteWrite(filePath);
-                        eventHandler.cache(
-                                new FileEvent(EventType.DIRECTORY_CREATE, filePath, file.lastModified(), file.length()));
+                        eventHandler
+                                .cache(new FileEvent(EventType.DIRECTORY_CREATE, filePath, file.lastModified(), file.length()));
                         // 多向同步：让其它客户端也建这个目录
-                        relay(session, payload);
+                        relayRaw(session, payload);
                     }
                 } else {
                     if (file.exists() && !file.isDirectory()) {
@@ -306,7 +469,7 @@ public class RemoteMessageHandler implements MessageHandler {
                             markRemoteWrite(filePath);
                             eventHandler.cache(new FileEvent(EventType.FILE_MODIFY, filePath, file.lastModified(), 0));
                             // 多向同步：其它客户端也要跟着清空
-                            relay(session, payload);
+                            relayRaw(session, payload);
                         }
                     } else if (!file.exists() && 0 == fileChecksum.getFileSize()) {
                         file.createNewFile();
@@ -364,8 +527,7 @@ public class RemoteMessageHandler implements MessageHandler {
                                 if (fileSize <= currentIndex) {
                                     result.add(blockChecksum.getBlockIndex());
                                 } else {
-                                    int size = (int) (currentIndex + blockSize > fileSize ? fileSize - currentIndex
-                                            : blockSize);
+                                    int size = (int) (currentIndex + blockSize > fileSize ? fileSize - currentIndex : blockSize);
                                     byte[] checksum = LocalFileAdaptor.checksum(file, currentIndex, size);
                                     if (!Arrays.equals(checksum, blockChecksum.getChecksum())) {
                                         result.add(blockChecksum.getBlockIndex());
@@ -412,7 +574,8 @@ public class RemoteMessageHandler implements MessageHandler {
                                 byte[] data = new byte[size];
                                 raf.seek(currentIndex);
                                 raf.read(data);
-                                sendBlock(session, HEADER_FILE_MODIFY, filePath, fileSize, blockSize, blockIndex, data);
+                                sendBlock(session, HEADER_FILE_MODIFY, filePath, fileSize, blockSize, blockIndex, data,
+                                        originSource(filePath));
                             }
                         } catch (FileNotFoundException e) {
                             e.printStackTrace();
@@ -442,7 +605,7 @@ public class RemoteMessageHandler implements MessageHandler {
                         if (blockSize > fileSize) {
                             try {
                                 sendBlock(session, HEADER_FILE_MODIFY, filePath, fileSize, -1, 0,
-                                        FileUtils.readFileToByteArray(file));
+                                        FileUtils.readFileToByteArray(file), originSource(filePath));
                             } catch (IOException e) {
                             }
                         } else {
@@ -493,12 +656,14 @@ public class RemoteMessageHandler implements MessageHandler {
                                     if (0 != lastBlockSize) {
                                         byte[] lastBlock = new byte[lastBlockSize];
                                         raf.read(lastBlock);
-                                        sendBlock(session, HEADER_FILE_CREATE, filePath, fileSize, blockSize, i, lastBlock);
+                                        sendBlock(session, HEADER_FILE_CREATE, filePath, fileSize, blockSize, i, lastBlock,
+                                                originSource(filePath));
                                     }
                                 } else {
                                     raf.seek((long) i * blockSize);
                                     raf.read(data);
-                                    sendBlock(session, HEADER_FILE_CREATE, filePath, fileSize, blockSize, i, data);
+                                    sendBlock(session, HEADER_FILE_CREATE, filePath, fileSize, blockSize, i, data,
+                                            originSource(filePath));
                                 }
                             }
                         } catch (FileNotFoundException e) {
@@ -644,8 +809,7 @@ public class RemoteMessageHandler implements MessageHandler {
         if (null == reconcileScheduler) {
             synchronized (this) {
                 if (null == reconcileScheduler) {
-                    reconcileScheduler = Executors.newSingleThreadScheduledExecutor(
-                            daemonThreadFactory("filesync-second-round"));
+                    reconcileScheduler = Executors.newSingleThreadScheduledExecutor(daemonThreadFactory("filesync-second-round"));
                 }
             }
         }
@@ -704,12 +868,73 @@ public class RemoteMessageHandler implements MessageHandler {
         }
     }
 
+    /**
+     * @param payload
+     * @return 路径长度；最高位（0x8000）是"带来源信息"标记位，这里屏蔽掉
+     */
     private int readPathLength(byte[] payload) {
         if (HEADER_LENGTH > payload.length) {
             return -1;
         }
         short length = EncodeUtils.bype2Short(Arrays.copyOfRange(payload, 1, HEADER_LENGTH));
-        return 0 > length ? -1 : length;
+        return length & 0x7FFF;
+    }
+
+    /**
+     * @param payload
+     * @return 事件报文里是否带来源信息段（路径长度 short 的最高位）
+     */
+    private boolean hasSource(byte[] payload) {
+        if (HEADER_LENGTH > payload.length) {
+            return false;
+        }
+        short length = EncodeUtils.bype2Short(Arrays.copyOfRange(payload, 1, HEADER_LENGTH));
+        return 0 != (length & 0x8000);
+    }
+
+    /**
+     * 组事件报文：{@code [1B 事件码][2B 路径长度(可带来源标记)][路径][4B 来源段长度][来源段 JSON][内容]}
+     * <p>
+     * 来源段存在时把路径长度 short 的最高位置 1。老版本接收端读到负数长度会判定报文非法并整条丢弃， 是干净失败的降级，不会误解析成别的结构。
+     * </p>
+     *
+     * @param code
+     * @param filePath
+     * @param source
+     *            来源信息，null 表示不带（保持老格式）
+     * @param content
+     * @return
+     */
+    private byte[] buildPayload(byte code, String filePath, EventSource source, byte[] content) {
+        byte[] pathByte = getFilePathByte(filePath);
+        byte[] sourceByte = null;
+        if (null != source) {
+            try {
+                sourceByte = objectMapper.writeValueAsBytes(source);
+            } catch (JsonProcessingException e) {
+                log.warn("事件来源信息序列化失败，已按无来源发送", e);
+            }
+        }
+        int sourceLength = null == sourceByte ? 0 : LENGTH_INT + sourceByte.length;
+        byte[] payload = new byte[HEADER_LENGTH + pathByte.length + sourceLength + content.length];
+
+        payload[0] = code;
+        short pathLength = (short) pathByte.length;
+        if (0 < sourceLength) {
+            pathLength = (short) (pathLength | 0x8000);
+        }
+        System.arraycopy(EncodeUtils.short2Byte(pathLength), 0, payload, 1, LENGTH_SHORT);
+        System.arraycopy(pathByte, 0, payload, HEADER_LENGTH, pathByte.length);
+
+        int index = HEADER_LENGTH + pathByte.length;
+        if (0 < sourceLength) {
+            System.arraycopy(EncodeUtils.int2Byte(sourceByte.length), 0, payload, index, LENGTH_INT);
+            index += LENGTH_INT;
+            System.arraycopy(sourceByte, 0, payload, index, sourceByte.length);
+            index += sourceByte.length;
+        }
+        System.arraycopy(content, 0, payload, index, content.length);
+        return payload;
     }
 
     private void send(Session session, byte[] data) {
@@ -739,29 +964,53 @@ public class RemoteMessageHandler implements MessageHandler {
     }
 
     public void sendEvent(FileEvent event) {
-        byte[] pathByte = getFilePathByte(event.getFilePath());
-        byte[] payload = new byte[HEADER_LENGTH + pathByte.length];
-        setHeader(event.getEventType().getCode(), pathByte, payload);
+        EventSource source = null;
+        if (null != event.getNodeInfo()) {
+            source = new EventSource(event.getNodeInfo(), event.getRelayers());
+        }
+        byte[] payload = buildPayload(event.getEventType().getCode(), event.getFilePath(), source, EMPTY_BYTE);
         send(null, payload);
         log.info("sent " + event);
     }
 
     public void sendBlock(Session session, byte code, String filePath, long fileSize, int blockSize, int blockIndex,
             byte[] data) {
-        byte[] pathByte = filePath.getBytes(Constants.DEFAULT_CHARSET);
-        int headerLength = HEADER_LENGTH + pathByte.length;
-        byte[] payload = new byte[headerLength + LENGTH_LONG + LENGTH_INT + LENGTH_INT + data.length];
+        sendBlock(session, code, filePath, fileSize, blockSize, blockIndex, data, new EventSource(getNodeInfo(), null));
+    }
 
-        setHeader(code, pathByte, payload);
+    /**
+     * 发送文件块（事件 0/1）
+     *
+     * @param session
+     *            目标会话，null 表示所有会话
+     * @param code
+     *            事件码
+     * @param filePath
+     *            相对路径
+     * @param fileSize
+     *            文件总大小
+     * @param blockSize
+     *            块大小，-1 表示整文件一次发送
+     * @param blockIndex
+     *            块序号
+     * @param data
+     *            块数据
+     * @param source
+     *            这条内容由谁产生（本节点的变更用 {@link #getNodeInfo()}，中继时传原始来源）
+     */
+    public void sendBlock(Session session, byte code, String filePath, long fileSize, int blockSize, int blockIndex, byte[] data,
+            EventSource source) {
+        byte[] content = new byte[LENGTH_LONG + LENGTH_INT + LENGTH_INT + data.length];
+        int index = 0;
+        System.arraycopy(EncodeUtils.long2Byte(fileSize), 0, content, index, LENGTH_LONG);
+        index += LENGTH_LONG;
+        System.arraycopy(EncodeUtils.int2Byte(blockSize), 0, content, index, LENGTH_INT);
+        index += LENGTH_INT;
+        System.arraycopy(EncodeUtils.int2Byte(blockIndex), 0, content, index, LENGTH_INT);
+        index += LENGTH_INT;
+        System.arraycopy(data, 0, content, index, data.length);
 
-        System.arraycopy(EncodeUtils.long2Byte(fileSize), 0, payload, headerLength, LENGTH_LONG);
-        headerLength += LENGTH_LONG;
-        System.arraycopy(EncodeUtils.int2Byte(blockSize), 0, payload, headerLength, LENGTH_INT);
-        headerLength += LENGTH_INT;
-        System.arraycopy(EncodeUtils.int2Byte(blockIndex), 0, payload, headerLength, LENGTH_INT);
-        headerLength += LENGTH_INT;
-        System.arraycopy(data, 0, payload, headerLength, data.length);
-        send(session, payload);
+        send(session, buildPayload(code, filePath, source, content));
         log.info("sent file blocks of:" + filePath + "\t" + data.length);
     }
 
@@ -887,8 +1136,7 @@ public class RemoteMessageHandler implements MessageHandler {
      * 打开/关闭多向同步（中继）：一个服务端 + 多个客户端时，服务端把某个客户端发来的变更
      * 转发给同一服务端的其它客户端，文件因此在所有节点上多向同步。
      * <p>
-     * 建议只在服务端（{@code master=true} 的一端）打开。关闭时每个客户端各自与服务端镜像，
-     * 客户端之间互不可见（原语义）。
+     * 建议只在服务端（{@code master=true} 的一端）打开。关闭时每个客户端各自与服务端镜像， 客户端之间互不可见（原语义）。
      * </p>
      *
      * @param multiWaySync
@@ -896,6 +1144,27 @@ public class RemoteMessageHandler implements MessageHandler {
     public void setMultiWaySync(boolean multiWaySync) {
         this.multiWaySync = multiWaySync;
         log.info("多向同步（中继）" + (multiWaySync ? "已开启" : "已关闭"));
+    }
+
+    /**
+     * @return 本节点身份信息（默认是启动时采集的本机信息：计算机名、IP、MAC、用户、操作系统等）
+     */
+    public NodeInfo getNodeInfo() {
+        NodeInfo info = nodeInfo;
+        if (null == info) {
+            info = NodeInfo.local();
+            nodeInfo = info;
+        }
+        return info;
+    }
+
+    /**
+     * 指定本节点身份信息（默认采集本机信息；容器、多实例、测试时可自定义）
+     *
+     * @param nodeInfo
+     */
+    public void setNodeInfo(NodeInfo nodeInfo) {
+        this.nodeInfo = nodeInfo;
     }
 
     /**
@@ -907,8 +1176,8 @@ public class RemoteMessageHandler implements MessageHandler {
 
     /**
      * 设置回环抑制时间窗：对端写入本地后，该路径在此时间窗内的本地监听事件不再回传。
-     * 取值应大于本地文件监听轮询间隔（{@link org.microprofile.file.listener.FileListener}
-     * 默认 1000ms，此处默认 3000ms）。
+     * 取值应大于本地文件监听轮询间隔（{@link org.microprofile.file.listener.FileListener} 默认
+     * 1000ms，此处默认 3000ms）。
      *
      * @param echoSuppressMillis
      */
