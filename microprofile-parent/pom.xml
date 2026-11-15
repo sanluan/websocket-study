@@ -9,7 +9,8 @@
     <modules>
         <module>microprofile-common</module>
         <module>microprofile-filesync</module>
-		<module>microprofile-message-server</module>
+        <module>microprofile-proxy</module>
+        <module>microprofile-message-server</module>
     </modules>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>

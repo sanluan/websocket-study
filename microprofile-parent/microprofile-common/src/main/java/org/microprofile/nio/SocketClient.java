@@ -11,6 +11,7 @@ import java.util.concurrent.ExecutorService;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLEngine;
 
+import org.microprofile.common.buffer.MultiByteBuffer;
 import org.microprofile.nio.handler.ChannelContext;
 import org.microprofile.nio.handler.ProtocolHandler;
 import org.microprofile.nio.handler.SocketProcesser;
@@ -70,6 +71,20 @@ public class SocketClient extends SocketProcesser implements Closeable {
     public SocketClient sendMessage(byte[] message) throws IOException {
         if (null != channelContext) {
             channelContext.write(ByteBuffer.wrap(message));
+        }
+        return this;
+    }
+
+    public SocketClient sendMessage(ByteBuffer message) throws IOException {
+        if (null != channelContext) {
+            channelContext.write(message);
+        }
+        return this;
+    }
+
+    public SocketClient sendMessage(MultiByteBuffer message) throws IOException {
+        if (null != channelContext) {
+            channelContext.write(message);
         }
         return this;
     }

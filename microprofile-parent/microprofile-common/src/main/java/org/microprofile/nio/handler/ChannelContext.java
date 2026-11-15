@@ -12,6 +12,8 @@ import javax.net.ssl.SSLEngineResult.HandshakeStatus;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLSession;
 
+import org.microprofile.common.buffer.MultiByteBuffer;
+
 public class ChannelContext<T> implements Closeable {
     private String id;
     private SocketChannel socketChannel;
@@ -152,6 +154,17 @@ public class ChannelContext<T> implements Closeable {
         while ((task = sslEngine.getDelegatedTask()) != null) {
             socketProcesser.execute(task);
         }
+    }
+
+    /**
+     * @param src
+     * @return
+     * @throws IOException
+     */
+    public int write(MultiByteBuffer src) throws IOException {
+        ByteBuffer temp = ByteBuffer.allocate(src.remaining());
+        src.get(temp.array());
+        return write(temp);
     }
 
     /**

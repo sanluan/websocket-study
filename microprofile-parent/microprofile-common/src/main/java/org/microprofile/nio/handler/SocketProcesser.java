@@ -3,6 +3,7 @@ package org.microprofile.nio.handler;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.CancelledKeyException;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
@@ -121,36 +122,39 @@ public abstract class SocketProcesser implements Closeable {
                 while (keyIterator.hasNext()) {
                     SelectionKey key = keyIterator.next();
                     keyIterator.remove();
-                    if (key.isReadable()) {
-                        ChannelContext<?> channelContext = (ChannelContext<?>) key.attachment();
-                        ThreadHandler<?> threadHandler = channelContext.getThreadHandler();
-                        if (null != channelContext) {
-                            try {
-                                ByteBuffer byteBuffer = allocateAndWait(channelContext.getBlockSize());
-                                int n = channelContext.read(byteBuffer);
-                                while (0 < n) {
-                                    byteBuffer.flip();
-                                    if (threadHandler.addByteBuffer(byteBuffer)) {
-                                        pool.execute(threadHandler);
+                    try {
+                        if (key.isReadable()) {
+                            ChannelContext<?> channelContext = (ChannelContext<?>) key.attachment();
+                            ThreadHandler<?> threadHandler = channelContext.getThreadHandler();
+                            if (null != channelContext) {
+                                try {
+                                    ByteBuffer byteBuffer = allocateAndWait(channelContext.getBlockSize());
+                                    int n = channelContext.read(byteBuffer);
+                                    while (0 < n) {
+                                        byteBuffer.flip();
+                                        if (threadHandler.addByteBuffer(byteBuffer)) {
+                                            pool.execute(threadHandler);
+                                        }
+                                        byteBuffer = allocateAndWait(channelContext.getBlockSize());
+                                        n = channelContext.read(byteBuffer);
                                     }
-                                    byteBuffer = allocateAndWait(channelContext.getBlockSize());
-                                    n = channelContext.read(byteBuffer);
-                                }
-                                if (-1 == n) {
+                                    if (-1 == n) {
+                                        channelContext.close();
+                                    } else {
+                                        recycleByteBufferQueue.add(byteBuffer);
+                                    }
+                                } catch (Exception ex) {
                                     channelContext.close();
-                                } else {
-                                    recycleByteBufferQueue.add(byteBuffer);
                                 }
-                            } catch (Exception ex) {
-                                channelContext.close();
                             }
+                        } else if (key.isAcceptable()) {
+                            ServerSocketChannel server = (ServerSocketChannel) key.channel();
+                            SocketChannel socketChannel = server.accept();
+                            ChannelContext<?> channelContext = new ChannelContext<>(protocolHandler, this, socketChannel, null,
+                                    blockSize);
+                            register(socketChannel.configureBlocking(false), channelContext);
                         }
-                    } else if (key.isAcceptable()) {
-                        ServerSocketChannel server = (ServerSocketChannel) key.channel();
-                        SocketChannel socketChannel = server.accept();
-                        ChannelContext<?> channelContext = new ChannelContext<>(protocolHandler, this, socketChannel, null,
-                                blockSize);
-                        register(socketChannel.configureBlocking(false), channelContext);
+                    } catch (CancelledKeyException e) {
                     }
                 }
             }

@@ -1,4 +1,5 @@
 rootProject.name = 'microprofile-parent'
 include 'microprofile-common'
 include 'microprofile-filesync'
+include 'microprofile-proxy'
 include 'microprofile-message-server'
