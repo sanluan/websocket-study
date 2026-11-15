@@ -178,6 +178,26 @@ public class FileEventHandler implements EventHandler {
         return remoteMessageHandler.getSyncMode();
     }
 
+    /**
+     * 打开/关闭多向同步（中继），等价于
+     * {@code getRemoteMessageHandler(master).setMultiWaySync(multiWay)}。
+     * <p>
+     * 一个服务端接多个客户端时，在服务端一侧打开，客户端 A 的改动会经由服务端到达 B、C。
+     * </p>
+     *
+     * @param multiWaySync
+     */
+    public void setMultiWaySync(boolean multiWaySync) {
+        remoteMessageHandler.setMultiWaySync(multiWaySync);
+    }
+
+    /**
+     * @return 是否开启多向同步（中继）
+     */
+    public boolean isMultiWaySync() {
+        return remoteMessageHandler.isMultiWaySync();
+    }
+
     @Override
     public void cache(FileEvent event) {
         eventQueue.add(event);

@@ -71,6 +71,14 @@ public class RemoteMessageHandler implements MessageHandler {
      */
     private volatile SyncMode syncMode = SyncMode.BIDIRECTIONAL;
     /**
+     * 多向同步（中继）：一个服务端 + 多个客户端时，把某个客户端发来的变更转发给同一服务端的其它客户端。
+     * <p>
+     * 默认关闭，保持"每个客户端各自与服务端镜像"的原语义；按需
+     * {@link #setMultiWaySync(boolean)} 打开。
+     * </p>
+     */
+    private volatile boolean multiWaySync = false;
+    /**
      * 对端写入本地后，抑制“本端变更再次回传”的时间窗（毫秒），应大于本地监听轮询间隔
      */
     private volatile long echoSuppressMillis = 3000L;
@@ -108,6 +116,13 @@ public class RemoteMessageHandler implements MessageHandler {
     }
 
     /**
+     * @return 当前在线会话数（一个服务端接多个客户端时可用来观察连接数）
+     */
+    public int getSessionCount() {
+        return sessionMap.size();
+    }
+
+    /**
      * @param eventHandler
      * @param localFileAdaptor
      */
@@ -131,7 +146,7 @@ public class RemoteMessageHandler implements MessageHandler {
         }
     }
 
-    private void handleEvent(byte header, byte[] payload) {
+    private void handleEvent(byte header, byte[] payload, Session origin) {
         int filePathLength = readPathLength(payload);
         if (0 > filePathLength) {
             log.warn("文件事件消息头部非法，已丢弃");
@@ -183,7 +198,73 @@ public class RemoteMessageHandler implements MessageHandler {
                 // 先登记“对端写入”，再交给回环抑制，避免本端监听把这次写入当成用户修改再回传
                 markRemoteWrite(filePath);
                 eventHandler.cache(new FileEvent(eventType, filePath, file.lastModified(), file.length()));
+                // 多向同步：把这次变更原样转发给其它客户端（排除来源会话），
+                // 于是客户端 A 的改动可以经由服务端到达 B、C
+                relay(origin, payload);
+                if (0 == header || 1 == header) {
+                    // 转发块内容之后，再给其它客户端一次元数据比对机会：
+                    // 若它们本来就和本端不一致（比如版本不同、缺文件），块级差异会被自动补齐
+                    relayChecksum(origin, filePath);
+                }
             }
+        }
+    }
+
+    /**
+     * 多向同步（中继）：把报文原样转发给同一服务端上的其它会话。
+     * <p>
+     * 只有 {@link #isMultiWaySync()} 打开、本端允许发送、并且存在其它会话时才真正转发；
+     * 一对一的场景下没有其它会话，转发是空操作。
+     * </p>
+     *
+     * @param origin
+     *            报文来源会话，转发时排除
+     * @param payload
+     */
+    private void relay(Session origin, byte[] payload) {
+        if (!multiWaySync || !syncMode.isSendEnabled() || 1 >= sessionMap.size()) {
+            return;
+        }
+        int forwarded = 0;
+        for (Session session : sessionMap.values()) {
+            if (null != origin && origin.getId().equals(session.getId())) {
+                continue;
+            }
+            send(session, payload);
+            forwarded++;
+        }
+        if (0 < forwarded) {
+            log.info("relayed " + payload[0] + " to " + forwarded + " peer(s)");
+        }
+    }
+
+    /**
+     * 多向同步：给其它会话补一次文件元数据（不带整文件校验和），让它们各自做块级比对。
+     * <p>
+     * 只靠转发块内容是不够的：对端如果持有的是另一个版本，收到的几块补丁未必能补齐差异。
+     * 补一次元数据后，对端会按需要请求缺的块，最终收敛到本端内容。
+     * </p>
+     *
+     * @param origin
+     * @param filePath
+     */
+    private void relayChecksum(Session origin, String filePath) {
+        if (!multiWaySync || !syncMode.isSendEnabled() || 1 >= sessionMap.size()) {
+            return;
+        }
+        if (null == filePath) {
+            return;
+        }
+        File file = localFileAdaptor.getFile(filePath);
+        if (!file.exists() || file.isDirectory()) {
+            return;
+        }
+        FileChecksum fileChecksum = new FileChecksum(filePath, false, file.length());
+        for (Session session : sessionMap.values()) {
+            if (null != origin && origin.getId().equals(session.getId())) {
+                continue;
+            }
+            sendFileChecksum(session, fileChecksum);
         }
     }
 
@@ -200,6 +281,8 @@ public class RemoteMessageHandler implements MessageHandler {
                         markRemoteWrite(filePath);
                         eventHandler.cache(
                                 new FileEvent(EventType.DIRECTORY_CREATE, filePath, file.lastModified(), file.length()));
+                        // 多向同步：让其它客户端也建这个目录
+                        relay(session, payload);
                     }
                 } else {
                     if (file.exists() && !file.isDirectory()) {
@@ -222,6 +305,8 @@ public class RemoteMessageHandler implements MessageHandler {
                             // 本地被对端清空，同样要抑制回传，否则两侧会互推空文件
                             markRemoteWrite(filePath);
                             eventHandler.cache(new FileEvent(EventType.FILE_MODIFY, filePath, file.lastModified(), 0));
+                            // 多向同步：其它客户端也要跟着清空
+                            relay(session, payload);
                         }
                     } else if (!file.exists() && 0 == fileChecksum.getFileSize()) {
                         file.createNewFile();
@@ -441,7 +526,7 @@ public class RemoteMessageHandler implements MessageHandler {
                 return;
             }
             log.info("文件消息\t" + header);
-            handleEvent(header, payload);
+            handleEvent(header, payload, session);
         } else if (HEADER_FILE_CHECKSUM == header) {
             // 对端推介了它的文件树。原来这里限定 !master，导致非 master 端的文件
             // 永远没有机会被对端比较到（双向同步只完成一半）；这里按“能否接收”判断
@@ -789,6 +874,28 @@ public class RemoteMessageHandler implements MessageHandler {
         }
         this.syncMode = syncMode;
         log.info("同步模式设置为 " + syncMode);
+    }
+
+    /**
+     * @return 是否开启多向同步（中继）
+     */
+    public boolean isMultiWaySync() {
+        return multiWaySync;
+    }
+
+    /**
+     * 打开/关闭多向同步（中继）：一个服务端 + 多个客户端时，服务端把某个客户端发来的变更
+     * 转发给同一服务端的其它客户端，文件因此在所有节点上多向同步。
+     * <p>
+     * 建议只在服务端（{@code master=true} 的一端）打开。关闭时每个客户端各自与服务端镜像，
+     * 客户端之间互不可见（原语义）。
+     * </p>
+     *
+     * @param multiWaySync
+     */
+    public void setMultiWaySync(boolean multiWaySync) {
+        this.multiWaySync = multiWaySync;
+        log.info("多向同步（中继）" + (multiWaySync ? "已开启" : "已关闭"));
     }
 
     /**
