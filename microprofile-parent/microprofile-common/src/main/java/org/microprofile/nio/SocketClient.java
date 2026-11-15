@@ -42,15 +42,29 @@ public class SocketClient extends SocketProcesser implements Closeable {
             SSLContext sslContext, boolean needClientAuth, int maxPending) throws IOException {
         super(pool, protocolHandler, sslContext, maxPending);
         SocketChannel socketChannel = SocketChannel.open(socketAddress);
-        channelContext = new ChannelContext<>(protocolHandler, this, socketChannel, createSSLEngine(sslContext, needClientAuth),
-                DEFAULT_BLOCK_SIZE);
+        channelContext = new ChannelContext<>(protocolHandler, this, socketChannel,
+                createSSLEngine(socketChannel, sslContext, needClientAuth), DEFAULT_BLOCK_SIZE);
         register(socketChannel.configureBlocking(false), channelContext);
     }
 
-    protected SSLEngine createSSLEngine(SSLContext sslContext, boolean needClientAuth) {
+    /**
+     * 客户端 SSL 引擎，带上对端地址信息以便支持 SNI
+     *
+     * @param socketChannel
+     * @param sslContext
+     * @param needClientAuth
+     * @return
+     */
+    protected SSLEngine createSSLEngine(SocketChannel socketChannel, SSLContext sslContext, boolean needClientAuth) {
         SSLEngine sslEngine = null;
         if (null != sslContext) {
-            sslEngine = sslContext.createSSLEngine();
+            SocketAddress remoteAddress = socketChannel.socket().getRemoteSocketAddress();
+            if (remoteAddress instanceof InetSocketAddress) {
+                InetSocketAddress address = (InetSocketAddress) remoteAddress;
+                sslEngine = sslContext.createSSLEngine(address.getHostString(), address.getPort());
+            } else {
+                sslEngine = sslContext.createSSLEngine();
+            }
             sslEngine.setUseClientMode(true);
             sslEngine.setNeedClientAuth(needClientAuth);
         }
@@ -90,7 +104,7 @@ public class SocketClient extends SocketProcesser implements Closeable {
     }
 
     public boolean isOpen() throws IOException {
-        return channelContext.isOpen();
+        return null != channelContext && channelContext.isOpen();
     }
 
     public void reConnect() throws IOException {
@@ -100,7 +114,7 @@ public class SocketClient extends SocketProcesser implements Closeable {
     }
 
     public void close() throws IOException {
-        if (channelContext.isOpen()) {
+        if (null != channelContext && channelContext.isOpen()) {
             channelContext.close();
         }
         super.close();

@@ -13,8 +13,8 @@ public class ThreadHandler<T> implements Runnable, Closeable {
     private SocketProcesser socketProcesser;
     private ChannelContext<T> channelContext;
     private ConcurrentLinkedQueue<ByteBuffer> byteBufferQueue = new ConcurrentLinkedQueue<>();
-    private boolean running;
-    private boolean closed;
+    private volatile boolean running;
+    private volatile boolean closed;
     private MultiByteBuffer cachedBuffer = new MultiByteBuffer();
     private int payloadLength = 0;
     private Lock lock = new ReentrantLock();
@@ -29,43 +29,61 @@ public class ThreadHandler<T> implements Runnable, Closeable {
     }
 
     /**
+     * 入队并在锁内抢占消费权，避免"最后一个字节入队后线程刚好退出"导致的丢失唤醒
+     *
      * @param byteBuffer
-     * @return
+     * @return true 需要提交到线程池执行
      */
     public boolean addByteBuffer(ByteBuffer byteBuffer) {
-        byteBufferQueue.add(byteBuffer);
         socketProcesser.add();
-        return !running;
+        byteBufferQueue.add(byteBuffer);
+        lock.lock();
+        try {
+            if (running) {
+                return false;
+            }
+            running = true;
+            return true;
+        } finally {
+            lock.unlock();
+        }
     }
 
     @Override
     public void run() {
-        lock.lock();
-        if (!running) {
-            running = true;
-            lock.unlock();
+        for (;;) {
             ByteBuffer byteBuffer = byteBufferQueue.poll();
-            while (null != byteBuffer && !closed) {
+            if (null == byteBuffer) {
+                boolean empty;
+                lock.lock();
+                try {
+                    empty = closed || byteBufferQueue.isEmpty();
+                    if (empty) {
+                        running = false;
+                    }
+                } finally {
+                    lock.unlock();
+                }
+                if (empty) {
+                    return;
+                }
+                continue;
+            }
+            try {
                 socketProcesser.minus();
                 ProtocolHandler<T> protocolHandler = channelContext.getProtocolHandler();
                 cachedBuffer.put(byteBuffer);
-                try {
-                    if (payloadLength <= cachedBuffer.remaining()) {
-                        protocolHandler.read(channelContext, cachedBuffer);
-                        cachedBuffer.clear(socketProcesser.getRecycleByteBufferQueue());
-                    }
-                } catch (IOException e) {
-                    try {
-                        channelContext.close();
-                    } catch (IOException e1) {
-                    }
+                if (payloadLength <= cachedBuffer.remaining()) {
+                    protocolHandler.read(channelContext, cachedBuffer);
+                    cachedBuffer.clear(socketProcesser.getRecycleByteBufferQueue());
                 }
-                byteBuffer = byteBufferQueue.poll();
+            } catch (Exception e) {
+                try {
+                    channelContext.close();
+                } catch (Exception e1) {
+                }
             }
-            lock.lock();
-            running = false;
         }
-        lock.unlock();
     }
 
     /**

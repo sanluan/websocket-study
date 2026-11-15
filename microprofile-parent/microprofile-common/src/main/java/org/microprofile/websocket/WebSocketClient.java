@@ -10,6 +10,7 @@ import java.util.concurrent.Executors;
 
 import javax.net.ssl.SSLContext;
 
+import org.microprofile.common.constant.Constants;
 import org.microprofile.nio.SocketClient;
 import org.microprofile.nio.handler.ChannelContext;
 import org.microprofile.websocket.handler.Message;
@@ -61,13 +62,14 @@ public class WebSocketClient implements Closeable {
             throw new IllegalArgumentException("messageHandler can't be null");
         }
         if (ssl && null == sslContext) {
-            sslContext = SSLContext.getInstance("SSL");
+            sslContext = SSLContext.getInstance("TLS");
             sslContext.init(null, null, null);
         }
         socketClient = new SocketClient(host, port, Executors.newFixedThreadPool(1),
                 new WebSocketProtocolHandler(messageHandler, false), sslContext, needClientAuth);
         channelContext = socketClient.getChannelContext();
         if (ssl) {
+            // 握手必须在发送 HTTP Upgrade 之前完成，否则明文请求会被当作 TLS 记录
             channelContext.doHandShake();
         }
         channelContext.write(HttpProtocolUtils.getHandshake(host, port, path));
@@ -92,7 +94,7 @@ public class WebSocketClient implements Closeable {
      * @throws IOException
      */
     public void sendString(String data) throws IOException {
-        send(new Message(true, 0, Message.OPCODE_STRING, data.getBytes()));
+        send(new Message(true, 0, Message.OPCODE_STRING, data.getBytes(Constants.DEFAULT_CHARSET)));
     }
 
     /**
@@ -108,7 +110,8 @@ public class WebSocketClient implements Closeable {
      * @throws IOException
      */
     public void send(Message message) throws IOException {
-        channelContext.write(MessageUtils.wrapMessage(message, false, true));
+        // 客户端发送的帧必须掩码（RFC6455 5.3）
+        channelContext.write(MessageUtils.wrapMessage(message, true, true));
     }
 
     public void close() throws IOException {

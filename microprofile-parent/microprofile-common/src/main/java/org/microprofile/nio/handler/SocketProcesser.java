@@ -18,12 +18,18 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLEngine;
+
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 
 public abstract class SocketProcesser implements Closeable {
+    protected final Log log = LogFactory.getLog(getClass());
     protected Selector selector;
     protected ExecutorService pool;
     protected ProtocolHandler<?> protocolHandler;
     protected SSLContext sslContext;
+    protected boolean needClientAuth;
     protected int maxPending;
     protected int pending;
     private ConcurrentLinkedQueue<ByteBuffer> recycleByteBufferQueue = new ConcurrentLinkedQueue<>();
@@ -40,7 +46,7 @@ public abstract class SocketProcesser implements Closeable {
      * @throws IOException
      */
     public SocketProcesser(ExecutorService pool, ProtocolHandler<?> protocolHandler, int maxPending) throws IOException {
-        this(pool, protocolHandler, null, maxPending, DEFAULT_BLOCK_SIZE);
+        this(pool, protocolHandler, null, maxPending, DEFAULT_BLOCK_SIZE, false);
     }
 
     /**
@@ -65,6 +71,20 @@ public abstract class SocketProcesser implements Closeable {
      */
     public SocketProcesser(ExecutorService pool, ProtocolHandler<?> protocolHandler, SSLContext sslContext, int maxPending,
             int blockSize) throws IOException {
+        this(pool, protocolHandler, sslContext, maxPending, blockSize, false);
+    }
+
+    /**
+     * @param pool
+     * @param protocolHandler
+     * @param sslContext
+     * @param maxPending
+     * @param blockSize
+     * @param needClientAuth
+     * @throws IOException
+     */
+    public SocketProcesser(ExecutorService pool, ProtocolHandler<?> protocolHandler, SSLContext sslContext, int maxPending,
+            int blockSize, boolean needClientAuth) throws IOException {
         this.selector = Selector.open();
         if (null == pool) {
             pool = Executors.newFixedThreadPool(1);
@@ -72,6 +92,7 @@ public abstract class SocketProcesser implements Closeable {
         this.pool = pool;
         this.protocolHandler = protocolHandler;
         this.sslContext = sslContext;
+        this.needClientAuth = needClientAuth;
         this.maxPending = maxPending;
         this.blockSize = blockSize;
         if (0 < maxPending) {
@@ -124,41 +145,73 @@ public abstract class SocketProcesser implements Closeable {
                     keyIterator.remove();
                     try {
                         if (key.isReadable()) {
-                            ChannelContext<?> channelContext = (ChannelContext<?>) key.attachment();
-                            ThreadHandler<?> threadHandler = channelContext.getThreadHandler();
-                            if (null != channelContext) {
-                                try {
-                                    ByteBuffer byteBuffer = allocateAndWait(channelContext.getBlockSize());
-                                    int n = channelContext.read(byteBuffer);
-                                    while (0 < n) {
-                                        byteBuffer.flip();
-                                        if (threadHandler.addByteBuffer(byteBuffer)) {
-                                            pool.execute(threadHandler);
-                                        }
-                                        byteBuffer = allocateAndWait(channelContext.getBlockSize());
-                                        n = channelContext.read(byteBuffer);
-                                    }
-                                    if (-1 == n) {
-                                        channelContext.close();
-                                    } else {
-                                        recycleByteBufferQueue.add(byteBuffer);
-                                    }
-                                } catch (Exception ex) {
-                                    channelContext.close();
-                                }
+                            Object attachment = key.attachment();
+                            if (attachment instanceof ChannelContext) {
+                                read((ChannelContext<?>) attachment);
                             }
                         } else if (key.isAcceptable()) {
                             ServerSocketChannel server = (ServerSocketChannel) key.channel();
                             SocketChannel socketChannel = server.accept();
-                            ChannelContext<?> channelContext = new ChannelContext<>(protocolHandler, this, socketChannel, null,
-                                    blockSize);
-                            register(socketChannel.configureBlocking(false), channelContext);
+                            if (null != socketChannel) {
+                                socketChannel.configureBlocking(false);
+                                ChannelContext<?> channelContext = new ChannelContext<>(protocolHandler, this, socketChannel,
+                                        createSSLEngine(), blockSize);
+                                register(socketChannel, channelContext);
+                            }
                         }
                     } catch (CancelledKeyException e) {
+                    } catch (Exception e) {
+                        // 单个连接出错不能拖垮 selector 线程
+                        log.error("handle selection key error", e);
                     }
                 }
             }
         }
+    }
+
+    /**
+     * @param channelContext
+     * @throws IOException
+     */
+    protected void read(ChannelContext<?> channelContext) throws IOException {
+        ThreadHandler<?> threadHandler = channelContext.getThreadHandler();
+        ByteBuffer byteBuffer = null;
+        try {
+            byteBuffer = allocateAndWait(channelContext.getBlockSize());
+            int n = channelContext.read(byteBuffer);
+            while (0 < n) {
+                byteBuffer.flip();
+                if (threadHandler.addByteBuffer(byteBuffer)) {
+                    pool.execute(threadHandler);
+                }
+                byteBuffer = allocateAndWait(channelContext.getBlockSize());
+                n = channelContext.read(byteBuffer);
+            }
+            if (-1 == n) {
+                channelContext.close();
+            }
+        } catch (Exception ex) {
+            channelContext.close();
+        } finally {
+            if (null != byteBuffer) {
+                recycleByteBufferQueue.add(byteBuffer);
+            }
+        }
+    }
+
+    /**
+     * 服务端使用的 SSL 引擎，sslContext 为 null 时返回 null（即明文通信）
+     *
+     * @return
+     */
+    protected SSLEngine createSSLEngine() {
+        if (null == sslContext) {
+            return null;
+        }
+        SSLEngine sslEngine = sslContext.createSSLEngine();
+        sslEngine.setUseClientMode(false);
+        sslEngine.setNeedClientAuth(needClientAuth);
+        return sslEngine;
     }
 
     public void execute(Runnable task) {
@@ -173,7 +226,7 @@ public abstract class SocketProcesser implements Closeable {
             }
         }
         ByteBuffer byteBuffer = recycleByteBufferQueue.poll();
-        if (null == byteBuffer) {
+        if (null == byteBuffer || byteBuffer.capacity() < blockSize) {
             byteBuffer = ByteBuffer.allocateDirect(blockSize);
         } else {
             byteBuffer.clear();

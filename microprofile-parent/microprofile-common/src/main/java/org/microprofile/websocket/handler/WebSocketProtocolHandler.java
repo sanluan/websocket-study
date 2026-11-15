@@ -37,50 +37,7 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
             channelContext.setAttachment(webSocketFrame = new WebSocketFrame());
         }
         try {
-            if (webSocketFrame.isInitialized()) {
-                Message message = MessageUtils.processMessage(multiByteBuffer, channelContext);
-                while (null != message) {
-                    if (MessageUtils.isControl(message.getOpCode())) {
-                        if (Message.OPCODE_CLOSE == message.getOpCode()) {
-                            channelContext.close();
-                            return;
-                        } else if (Message.OPCODE_PING == message.getOpCode()) {
-                            Message pongMessage = new Message(message.isFin(), message.getRsv(), Message.OPCODE_PONG,
-                                    message.getPayload());
-                            channelContext.getSocketChannel().write(MessageUtils.wrapMessage(pongMessage, false, true));
-                        } else {
-                            channelContext.close();
-                            return;
-                        }
-                    } else if (message.isFin()) {
-                        if (0 != webSocketFrame.getCachedMessageLength() && Message.OPCODE_PART == message.getOpCode()) {
-                            ByteBuffer newByteBuffer = ByteBuffer.allocate(webSocketFrame.getCachedMessageLength());
-                            for (byte[] payload : webSocketFrame.getCachedMessageList()) {
-                                newByteBuffer.put(payload);
-                            }
-                            webSocketFrame.clearCachedMessageList();
-                            newByteBuffer.put(message.getPayload());
-                            message = new Message(message.isFin(), webSocketFrame.getCachedOpCode(), message.getOpCode(),
-                                    newByteBuffer.array());
-                        }
-                        if (Message.OPCODE_BYTE == message.getOpCode()) {
-                            handler.onMessage(message.getPayload(), webSocketFrame.getSession());
-                        } else if (Message.OPCODE_STRING == message.getOpCode()) {
-                            handler.onMessage(new String(message.getPayload(), Constants.DEFAULT_CHARSET),
-                                    webSocketFrame.getSession());
-                        } else {
-                            channelContext.close();
-                            return;
-                        }
-                    } else {
-                        if (0 != webSocketFrame.getCachedMessageLength()) {
-                            webSocketFrame.setCachedOpCode(message.getOpCode());
-                        }
-                        webSocketFrame.addCachedMessage(message.getPayload());
-                    }
-                    message = MessageUtils.processMessage(multiByteBuffer, channelContext);
-                }
-            } else {
+            if (!webSocketFrame.isInitialized()) {
                 if (!HttpProtocolUtils.isEnough(multiByteBuffer)) {
                     if (multiByteBuffer.remaining() > maxHeaderLength) {
                         channelContext.close();
@@ -96,15 +53,84 @@ public class WebSocketProtocolHandler implements ProtocolHandler<WebSocketFrame>
                 if (null == session) {
                     channelContext.close();
                     return;
-                } else {
-                    webSocketFrame.setSession(session);
-                    webSocketFrame.setInitialized(true);
-                    handler.onOpen(webSocketFrame.getSession());
+                }
+                webSocketFrame.setSession(session);
+                webSocketFrame.setInitialized(true);
+                handler.onOpen(webSocketFrame.getSession());
+                // 握手报文之后可能紧跟着同一批到达的数据帧，需要继续解析
+            }
+            for (Message message = MessageUtils.processMessage(multiByteBuffer,
+                    channelContext); null != message; message = MessageUtils.processMessage(multiByteBuffer, channelContext)) {
+                if (!processMessage(channelContext, webSocketFrame, message)) {
+                    return;
                 }
             }
         } catch (IOException e) {
             channelContext.close();
         }
+    }
+
+    /**
+     * @param channelContext
+     * @param webSocketFrame
+     * @param message
+     * @return false 表示连接已关闭，不需要继续解析
+     * @throws IOException
+     */
+    private boolean processMessage(ChannelContext<WebSocketFrame> channelContext, WebSocketFrame webSocketFrame, Message message)
+            throws IOException {
+        if (MessageUtils.isControl(message.getOpCode())) {
+            if (Message.OPCODE_CLOSE == message.getOpCode()) {
+                channelContext.close();
+                return false;
+            } else if (Message.OPCODE_PING == message.getOpCode()) {
+                Message pongMessage = new Message(true, 0, Message.OPCODE_PONG, message.getPayload());
+                // 必须走 ChannelContext.write，SSL 通道下才能正确封装，客户端还需要掩码
+                channelContext.write(MessageUtils.wrapMessage(pongMessage, !server, true));
+            } else if (Message.OPCODE_PONG == message.getOpCode()) {
+                // 对端的心跳应答，直接忽略
+            } else {
+                channelContext.close();
+                return false;
+            }
+            return true;
+        }
+        if (!message.isFin()) {
+            if (0 == webSocketFrame.getCachedMessageLength()) {
+                // 首片记录原始 opcode，后续分片是 PART
+                webSocketFrame.setCachedOpCode(message.getOpCode());
+            }
+            webSocketFrame.addCachedMessage(message.getPayload());
+            return true;
+        }
+        byte opCode = message.getOpCode();
+        byte[] payload = message.getPayload();
+        if (0 != webSocketFrame.getCachedMessageLength()) {
+            if (Message.OPCODE_PART != opCode) {
+                // 分片未结束又收到新的消息类型，属于协议错误
+                webSocketFrame.clearCachedMessageList();
+                channelContext.close();
+                return false;
+            }
+            byte cachedOpCode = webSocketFrame.getCachedOpCode();
+            ByteBuffer newByteBuffer = ByteBuffer.allocate(webSocketFrame.getCachedMessageLength() + payload.length);
+            for (byte[] cachedMessage : webSocketFrame.getCachedMessageList()) {
+                newByteBuffer.put(cachedMessage);
+            }
+            newByteBuffer.put(payload);
+            webSocketFrame.clearCachedMessageList();
+            opCode = cachedOpCode;
+            payload = newByteBuffer.array();
+        }
+        if (Message.OPCODE_BYTE == opCode) {
+            handler.onMessage(payload, webSocketFrame.getSession());
+        } else if (Message.OPCODE_STRING == opCode) {
+            handler.onMessage(new String(payload, Constants.DEFAULT_CHARSET), webSocketFrame.getSession());
+        } else {
+            channelContext.close();
+            return false;
+        }
+        return true;
     }
 
     @Override

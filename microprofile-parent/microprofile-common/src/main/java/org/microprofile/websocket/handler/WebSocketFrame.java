@@ -53,7 +53,7 @@ public class WebSocketFrame {
     /**
      */
     public void clearCachedMessageList() {
-        if (null == this.cachedMessageList) {
+        if (null != this.cachedMessageList) {
             this.cachedMessageList.clear();
         }
         this.cachedMessageList = null;

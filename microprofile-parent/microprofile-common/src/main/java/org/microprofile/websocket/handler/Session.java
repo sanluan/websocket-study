@@ -16,6 +16,10 @@ public class Session {
     private Map<String, String> attributeMap;
     private String url;
     private String contextPath;
+    /**
+     * 客户端连接：按 RFC6455 发送的消息必须掩码
+     */
+    private boolean client;
 
     public Session(String id, ChannelContext<WebSocketFrame> channelContext) {
         this.id = id;
@@ -99,7 +103,21 @@ public class Session {
      * @throws IOException
      */
     public void send(Message message) throws IOException {
-        channelContext.write(MessageUtils.wrapMessage(message, false, true));
+        channelContext.write(MessageUtils.wrapMessage(message, client, true));
+    }
+
+    /**
+     * @return 是否为客户端连接
+     */
+    public boolean isClient() {
+        return client;
+    }
+
+    /**
+     * @param client
+     */
+    public void setClient(boolean client) {
+        this.client = client;
     }
 
     /**

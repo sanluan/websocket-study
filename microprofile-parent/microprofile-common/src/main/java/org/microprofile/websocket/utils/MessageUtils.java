@@ -13,6 +13,7 @@ import org.microprofile.websocket.handler.Message;
 import org.microprofile.websocket.handler.WebSocketFrame;
 
 public class MessageUtils {
+    private static final int MAX_CONTROL_PAYLOAD = 125;
     private static final Queue<SecureRandom> randoms = new ConcurrentLinkedQueue<SecureRandom>();
 
     public static byte[] generateMask() {
@@ -47,40 +48,49 @@ public class MessageUtils {
             int len = (b2 & 0x7F);
             int headLenth = hasMask ? 6 : 2;
             if (126 <= len) {
-                if (len == 126 && (headLenth += 2) <= r) {
-                    len = byteBuffer.getShort();
-                } else if (126 < len && (headLenth += 8) <= r) {
+                if (126 == len) {
+                    if (headLenth + 2 > r) {
+                        channelContext.setPayloadLength(headLenth + 2);
+                        byteBuffer.reset();
+                        return null;
+                    }
+                    headLenth += 2;
+                    // 短整型是有符号的，必须去掉符号位扩展
+                    len = byteBuffer.getShort() & 0xFFFF;
+                } else {
+                    if (headLenth + 8 > r) {
+                        channelContext.setPayloadLength(headLenth + 8);
+                        byteBuffer.reset();
+                        return null;
+                    }
+                    headLenth += 8;
                     byteBuffer.getInt();
                     len = byteBuffer.getInt();
-                } else {
-                    channelContext.setPayloadLength(headLenth);
-                    byteBuffer.reset();
-                    return null;
+                    if (0 > len) {
+                        throw new IOException("message payload is too large");
+                    }
                 }
             }
-            if (len + headLenth <= r) {
-                byte[] array = new byte[len];
-                if (hasMask) {
-                    byte[] mask = new byte[4];
-                    byteBuffer.get(mask).get(array);
-                    for (int i = 0; i < array.length; i++) {
-                        array[i] = (byte) (array[i] ^ mask[i % 4]);
-                    }
-                } else {
-                    byteBuffer.get(array);
-                }
-                channelContext.setPayloadLength(0);
-                if (isControl(opCode)) {
-                    if (fin && 125 >= len) {
-                        return new Message(fin, rsv, opCode, array);
-                    }
-                } else {
-                    return new Message(fin, rsv, opCode, array);
-                }
-            } else {
+            if (isControl(opCode) && (MAX_CONTROL_PAYLOAD < len || !fin)) {
+                throw new IOException("invalid websocket control frame");
+            }
+            if (len + headLenth > r) {
                 channelContext.setPayloadLength(headLenth + len);
                 byteBuffer.reset();
+                return null;
             }
+            byte[] array = new byte[len];
+            if (hasMask) {
+                byte[] mask = new byte[4];
+                byteBuffer.get(mask).get(array);
+                for (int i = 0; i < array.length; i++) {
+                    array[i] = (byte) (array[i] ^ mask[i % 4]);
+                }
+            } else {
+                byteBuffer.get(array);
+            }
+            channelContext.setPayloadLength(0);
+            return new Message(fin, rsv, opCode, array);
         }
         return null;
     }
@@ -126,9 +136,31 @@ public class MessageUtils {
         return byteBuffer;
     }
 
+    /**
+     * 打包一条完整的 WebSocket 消息，masked 为 true 时按 RFC6455 对负载逐字节掩码
+     *
+     * @param message
+     * @param masked
+     *            客户端发送时必须为 true
+     * @param first
+     * @return
+     */
     public static ByteBuffer wrapMessage(Message message, boolean masked, boolean first) {
         ByteBuffer byteBuffer = wrapMessageHeader(message, masked, first, message.getSize());
-        byteBuffer.put(message.getPayloadByteBuffer()).flip();
+        ByteBuffer payload = message.getPayloadByteBuffer();
+        if (masked) {
+            int maskOffset = byteBuffer.position() - 4;
+            byte[] mask = new byte[4];
+            for (int i = 0; i < mask.length; i++) {
+                mask[i] = byteBuffer.get(maskOffset + i);
+            }
+            for (int i = 0; payload.hasRemaining(); i++) {
+                byteBuffer.put((byte) (payload.get() ^ mask[i % 4]));
+            }
+        } else {
+            byteBuffer.put(payload);
+        }
+        byteBuffer.flip();
         return byteBuffer;
     }
 }

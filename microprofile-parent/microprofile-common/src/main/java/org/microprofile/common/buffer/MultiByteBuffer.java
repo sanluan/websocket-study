@@ -41,30 +41,43 @@ public class MultiByteBuffer {
             throw new IndexOutOfBoundsException();
         }
         ByteBuffer byteBuffer = this.byteBuffer;
-        int index = this.index;
+        int index = indexOf(byteBuffer);
         if (i > position) {
             int currentLimit = this.currentLimit;
             while (i >= currentLimit) {
                 byteBuffer = byteBufferList.get(++index);
                 currentLimit += byteBuffer.remaining();
             }
-            return byteBuffer.get(i - currentLimit + byteBuffer.remaining());
+            return byteBuffer.get(byteBuffer.position() + i - currentLimit + byteBuffer.remaining());
         } else if (i < position) {
             Integer start = startPositionMap.get(index);
-            int lastLimit = null == start ? this.currentLimit - byteBuffer.limit()
-                    : this.currentLimit - byteBuffer.limit() + start;
+            int lastLimit = null == start ? position - byteBuffer.position()
+                    : position - byteBuffer.position() + start;
             while (i < lastLimit) {
                 byteBuffer = byteBufferList.get(--index);
                 start = startPositionMap.get(index);
                 lastLimit -= null == start ? byteBuffer.limit() : byteBuffer.limit() - start;
             }
-            return byteBuffer.get(i - lastLimit + byteBuffer.remaining());
+            return byteBuffer.get(byteBuffer.position() + i - lastLimit);
         } else {
-            if (position == currentLimit) {
-                byteBuffer = byteBufferList.get(index + 1);
+            if (position == currentLimit && index + 1 < byteBufferList.size()) {
+                byteBuffer = byteBufferList.get(++index);
             }
             return byteBuffer.get(byteBuffer.position());
         }
+    }
+
+    /**
+     * @param target
+     * @return 引用相等的下标，避免 ByteBuffer.equals 比较内容造成误判
+     */
+    private int indexOf(ByteBuffer target) {
+        for (int i = 0, size = byteBufferList.size(); i < size; i++) {
+            if (byteBufferList.get(i) == target) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     /**
@@ -114,11 +127,12 @@ public class MultiByteBuffer {
         if (0 > mark) {
             throw new InvalidMarkException();
         }
-        position = mark;
-        while (indexMark < index) {
-            byteBufferList.get(--index).reset();
+        while (index > indexMark) {
+            // 先把当前缓冲区回退到被切入时的位置，再退到上一个缓冲区
+            byteBufferList.get(index).reset();
+            index--;
         }
-        index = indexMark;
+        position = mark;
         byteBuffer = byteBufferList.get(index);
         byteBuffer.reset();
         currentLimit = position + byteBuffer.remaining();
@@ -155,17 +169,18 @@ public class MultiByteBuffer {
      * @return
      */
     public MultiByteBuffer get(byte[] dst, int offset, int length) {
-        int len = length - offset;
-        if (len > remaining()) {
+        if (0 > offset || 0 > length || dst.length < offset + length) {
+            throw new IndexOutOfBoundsException();
+        }
+        if (length > remaining()) {
             throw new BufferUnderflowException();
-        } else {
-            for (int i = offset; i < len; i++) {
-                if (!byteBuffer.hasRemaining()) {
-                    next();
-                }
-                dst[i] = byteBuffer.get();
+        }
+        for (int i = offset, end = offset + length; i < end; i++) {
+            if (null != byteBuffer && !byteBuffer.hasRemaining()) {
+                next();
             }
-            position += len;
+            dst[i] = byteBuffer.get();
+            position++;
         }
         return this;
     }
@@ -176,9 +191,9 @@ public class MultiByteBuffer {
      */
     public MultiByteBuffer clear(Collection<ByteBuffer> recycleCollection) {
         mark = indexMark = -1;
-        if (0 < index) {
-            startPositionMap.clear();
-            if (position < limit) {
+        if (position < limit) {
+            if (0 < index) {
+                startPositionMap.clear();
                 limit -= position;
                 position = 0;
                 currentLimit = byteBuffer.remaining();
@@ -197,15 +212,15 @@ public class MultiByteBuffer {
                     }
                     i++;
                 }
-            } else {
-                position = limit = index = currentLimit = 0;
-                byteBuffer = null;
-                if (!byteBufferList.isEmpty()) {
-                    if (null != recycleCollection) {
-                        recycleCollection.addAll(byteBufferList);
-                    }
-                    byteBufferList.clear();
+            }
+        } else {
+            position = limit = index = currentLimit = 0;
+            byteBuffer = null;
+            if (!byteBufferList.isEmpty()) {
+                if (null != recycleCollection) {
+                    recycleCollection.addAll(byteBufferList);
                 }
+                byteBufferList.clear();
             }
         }
         return this;
