@@ -46,9 +46,10 @@ public class ThinAppClassLoader extends URLClassLoader {
                         return !Files.isDirectory(entry);
                     }
                 };
-                DirectoryStream<Path> stream = Files.newDirectoryStream(Paths.get(libPath), filter);
-                for (Path entry : stream) {
-                    addURL(entry.toUri().toURL());
+                try (DirectoryStream<Path> stream = Files.newDirectoryStream(Paths.get(libPath), filter)) {
+                    for (Path entry : stream) {
+                        addURL(entry.toUri().toURL());
+                    }
                 }
             }
             for (URL url : urls) {
@@ -75,8 +76,7 @@ public class ThinAppClassLoader extends URLClassLoader {
     }
 
     private void lookUpClasses(String parentPath, Path path) {
-        try {
-            DirectoryStream<Path> stream = Files.newDirectoryStream(path);
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(path)) {
             for (Path entry : stream) {
                 String fileName = entry.toFile().getName();
                 String name = null == parentPath ? fileName : parentPath + "/" + fileName;

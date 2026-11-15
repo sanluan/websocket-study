@@ -25,6 +25,7 @@ public class HttpProtocolUtils {
      *
      * @param multiByteBuffer
      * @return
+     * @throws IOException 
      */
     public static boolean isEnough(MultiByteBuffer multiByteBuffer) throws IOException {
         int last = multiByteBuffer.limit() - 1;
