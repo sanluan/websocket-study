@@ -50,7 +50,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
  * 用法：
  *
  * <pre>
- * ArchiveHandler archive = new ArchiveHandler(&quot;D:/archive&quot;, listener.getLocalFileAdaptor());
+ * ArchiveEventHandler archive = new ArchiveEventHandler(&quot;D:/archive&quot;, listener.getLocalFileAdaptor());
+ * archive.getRemoteMessageHandler(false) // 接收消息处理器
  * listener.addEventHandler(archive);   // 与 FileEventHandler 并列即可，归档不参与收发
  * archive.initialFullArchive();        // 初次同步全量
  * handler.setDeleteRecorder(archive);  // 删除记录带上来源 IP
@@ -138,7 +139,6 @@ public class ArchiveEventHandler extends RemoteEventHandler implements EventHand
         }
         this.archiveRoot = archiveRoot.getAbsoluteFile();
         this.localFileAdaptor = localFileAdaptor;
-        this.remoteMessageHandler = new RemoteMessageHandler(this, localFileAdaptor);
         if (0 < localFileAdaptor.getBlockSize()) {
             this.blockSize = localFileAdaptor.getBlockSize();
         }

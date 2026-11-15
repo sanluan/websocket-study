@@ -15,13 +15,14 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.filefilter.TrueFileFilter;
 import org.microprofile.file.archive.ArchiveEntry;
 import org.microprofile.file.archive.MergeReport;
+import org.microprofile.file.client.FileSyncClient;
 import org.microprofile.file.event.EventHandler;
 import org.microprofile.file.event.FileEvent;
 import org.microprofile.file.event.NodeInfo;
 import org.microprofile.file.filter.FileRule;
 import org.microprofile.file.filter.FileRuleSet;
 import org.microprofile.file.handler.ArchiveEventHandler;
-import org.microprofile.file.handler.FileEventHandler;
+import org.microprofile.file.handler.FileSyncEventHandler;
 import org.microprofile.file.handler.LoggingEventHandler;
 import org.microprofile.file.handler.RemoteMessageHandler;
 import org.microprofile.file.handler.SyncMode;
@@ -52,6 +53,7 @@ public class FileSyncSelfTest {
     private static final int PORT_ARCHIVE = 20007;
     private static final int PORT_NODE = 20008;
     private static final int PORT_RULE = 20009;
+    private static final int PORT_RECONNECT = 20010;
 
     private static int passed = 0;
     private static int failed = 0;
@@ -78,6 +80,7 @@ public class FileSyncSelfTest {
             testNodeChain(new File(root, "node-chain"));
             testRules();
             testRuleFilter(new File(root, "rules"));
+            testReconnect(new File(root, "reconnect"));
         } finally {
             System.out.println("RESULT: " + (0 == failed ? "PASS" : "FAIL") + " (" + passed + " passed, " + failed
                     + " failed)");
@@ -717,20 +720,102 @@ public class FileSyncSelfTest {
         }
     }
 
+    // -------------------------------------------------------------- 掉线重连
+
+    /**
+     * 服务端进程退出 → 客户端发现掉线 → 服务端在原端口重启 → 客户端自动重连并继续同步；
+     * 掉线期间本地新增的文件由重连后的第二轮对账补齐。
+     */
+    private static void testReconnect(File root) throws Exception {
+        System.out.println("=== RECONNECT ===");
+        File dirS = new File(root, "s");
+        File dirC = new File(root, "c");
+
+        Peer server = startServer(dirS, PORT_RECONNECT, SyncMode.BIDIRECTIONAL, false);
+        Peer client = connectReconnectClient(dirC, PORT_RECONNECT);
+        try {
+            check("重连客户端首次连接成功", waitFor(() -> client.sync.isConnected(), 20000));
+            waitSessions(server, 1);
+            write(new File(dirC, "before.txt"), "before-drop".getBytes("UTF-8"));
+            check("掉线前同步正常", null != waitContains(new File(dirS, "before.txt"), 20000, "before-drop"));
+
+            // 服务端下线：监听与端口一起关掉
+            server.stop();
+            check("客户端发现服务器掉线", waitFor(() -> !client.sync.isConnected(), 20000));
+
+            // 掉线期间本地继续产生改动（此时发不出去，只能等重连后的对账）
+            write(new File(dirC, "during-outage.txt"), "during-outage".getBytes("UTF-8"));
+
+            Peer server2 = restartServer(dirS, PORT_RECONNECT);
+            try {
+                check("客户端自动重连成功（重连次数 +1）", waitFor(() -> 1 <= client.sync.getReconnectCount(), 40000));
+                waitSessions(server2, 1);
+                write(new File(dirC, "after.txt"), "after-reconnect".getBytes("UTF-8"));
+                check("重连后继续推送新文件",
+                        null != waitContains(new File(dirS, "after.txt"), 20000, "after-reconnect"));
+                check("掉线期间的改动在重连后由对账补齐",
+                        null != waitContains(new File(dirS, "during-outage.txt"), 45000, "during-outage"));
+                System.out.println("  client state: " + client.sync);
+            } finally {
+                server2.stop();
+            }
+        } finally {
+            client.stop();
+        }
+    }
+
+    /**
+     * 用带重连能力的客户端连服务器（重试节奏调小，便于自检在几十秒内收敛）
+     */
+    private static Peer connectReconnectClient(File dir, int port) throws Exception {
+        Peer peer = new Peer();
+        FileUtils.forceMkdir(dir);
+        peer.listener = new FileListener(dir.getAbsolutePath(), BLOCK, TrueFileFilter.INSTANCE);
+        peer.handler = new FileSyncEventHandler(peer.listener.getLocalFileAdaptor(), SyncMode.BIDIRECTIONAL);
+        peer.sync = new FileSyncClient("localhost", port, "/", peer.handler);
+        peer.sync.setInitialRetryMillis(500L);
+        peer.sync.setMaxRetryMillis(5000L);
+        peer.sync.setHealthCheckMillis(500L);
+        peer.sync.start();
+        peer.listener.addEventHandler(peer.handler);
+        peer.listener.start();
+        return peer;
+    }
+
+    /**
+     * 在原端口重新起服务端：端口可能还在 TIME_WAIT，重试几次
+     */
+    private static Peer restartServer(File dir, int port) throws Exception {
+        Exception last = null;
+        for (int i = 0; i < 20; i++) {
+            try {
+                return startServer(dir, port, SyncMode.BIDIRECTIONAL, false);
+            } catch (Exception e) {
+                last = e;
+                Thread.sleep(500);
+            }
+        }
+        throw last;
+    }
+
     // ---------------------------------------------------------------- 工具
 
     private static class Peer {
         FileListener listener;
-        FileEventHandler handler;
+        FileSyncEventHandler handler;
         ArchiveEventHandler archive;
         WebSocketServer server;
         WebSocketClient client;
+        FileSyncClient sync;
 
         RemoteMessageHandler remote() {
             return null == handler ? null : handler.getRemoteMessageHandler(null != server);
         }
 
         void stop() throws Exception {
+            if (null != sync) {
+                sync.close();
+            }
             if (null != listener) {
                 listener.stop();
             }
@@ -748,7 +833,7 @@ public class FileSyncSelfTest {
         Peer peer = new Peer();
         FileUtils.forceMkdir(dir);
         peer.listener = new FileListener(dir.getAbsolutePath(), BLOCK, TrueFileFilter.INSTANCE);
-        peer.handler = new FileEventHandler(peer.listener.getLocalFileAdaptor(), mode);
+        peer.handler = new FileSyncEventHandler(peer.listener.getLocalFileAdaptor(), mode);
         RemoteMessageHandler remote = peer.handler.getRemoteMessageHandler(true);
         remote.setMultiWaySync(multiWay);
         peer.server = new WebSocketServer(port, 1, remote, 1000);
@@ -770,7 +855,7 @@ public class FileSyncSelfTest {
         peer.listener = new FileListener(dir.getAbsolutePath(), BLOCK, TrueFileFilter.INSTANCE);
         peer.archive = new ArchiveEventHandler(archiveRoot, peer.listener.getLocalFileAdaptor());
         peer.listener.addEventHandler(peer.archive);
-        peer.handler = new FileEventHandler(peer.listener.getLocalFileAdaptor(), SyncMode.BIDIRECTIONAL);
+        peer.handler = new FileSyncEventHandler(peer.listener.getLocalFileAdaptor(), SyncMode.BIDIRECTIONAL);
         peer.handler.setDeleteRecorder(peer.archive);
         peer.handler.setEchoObserver(peer.archive);
         RemoteMessageHandler remote = peer.handler.getRemoteMessageHandler(true);
@@ -785,7 +870,7 @@ public class FileSyncSelfTest {
     private static Peer connectClient(File dir, int port, SyncMode mode, EventHandler... extras) throws Exception {        Peer peer = new Peer();
         FileUtils.forceMkdir(dir);
         peer.listener = new FileListener(dir.getAbsolutePath(), BLOCK, TrueFileFilter.INSTANCE);
-        peer.handler = new FileEventHandler(peer.listener.getLocalFileAdaptor(), mode);
+        peer.handler = new FileSyncEventHandler(peer.listener.getLocalFileAdaptor(), mode);
         peer.client = new WebSocketClient("localhost", port, "/", peer.handler.getRemoteMessageHandler(false));
         peer.client.asyncListen();
         peer.listener.addEventHandler(peer.handler);
@@ -809,7 +894,7 @@ public class FileSyncSelfTest {
         FileUtils.forceMkdir(dir);
         peer.listener = new FileListener(dir.getAbsolutePath(), BLOCK, TrueFileFilter.INSTANCE);
         peer.listener.setNodeInfo(nodeInfo);
-        peer.handler = new FileEventHandler(peer.listener.getLocalFileAdaptor(), SyncMode.BIDIRECTIONAL);
+        peer.handler = new FileSyncEventHandler(peer.listener.getLocalFileAdaptor(), SyncMode.BIDIRECTIONAL);
         peer.handler.setNodeInfo(nodeInfo);
         RemoteMessageHandler remote = peer.handler.getRemoteMessageHandler(server);
         remote.setNodeInfo(nodeInfo);

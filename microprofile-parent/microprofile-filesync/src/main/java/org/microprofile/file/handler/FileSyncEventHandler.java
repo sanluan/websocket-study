@@ -17,7 +17,7 @@ import org.microprofile.file.event.FileEvent;
 import org.microprofile.file.event.FileEvent.EventType;
 import org.microprofile.file.message.BlockChecksum;
 
-public class FileEventHandler extends RemoteEventHandler implements EventHandler {
+public class FileSyncEventHandler extends RemoteEventHandler implements EventHandler {
     protected final Log log = LogFactory.getLog(getClass());
 
     public final static int DEFULT_CACHE_SIZE = 1000;
@@ -35,7 +35,7 @@ public class FileEventHandler extends RemoteEventHandler implements EventHandler
     /**
      * @param localFileHandler
      */
-    public FileEventHandler(LocalFileAdaptor localFileHandler) {
+    public FileSyncEventHandler(LocalFileAdaptor localFileHandler) {
         this(localFileHandler, DEFULT_CACHE_SIZE);
     }
 
@@ -43,7 +43,7 @@ public class FileEventHandler extends RemoteEventHandler implements EventHandler
      * @param cacheSize
      * @param localFileAdaptor
      */
-    public FileEventHandler(LocalFileAdaptor localFileAdaptor, int cacheSize) {
+    public FileSyncEventHandler(LocalFileAdaptor localFileAdaptor, int cacheSize) {
         super();
         this.eventQueue = new EventQueue<>(cacheSize);
         this.localFileAdaptor = localFileAdaptor;
@@ -55,7 +55,7 @@ public class FileEventHandler extends RemoteEventHandler implements EventHandler
      * @param syncMode
      *            同步方向开关
      */
-    public FileEventHandler(LocalFileAdaptor localFileAdaptor, SyncMode syncMode) {
+    public FileSyncEventHandler(LocalFileAdaptor localFileAdaptor, SyncMode syncMode) {
         this(localFileAdaptor, DEFULT_CACHE_SIZE, syncMode);
     }
 
@@ -65,7 +65,7 @@ public class FileEventHandler extends RemoteEventHandler implements EventHandler
      * @param syncMode
      *            同步方向开关
      */
-    public FileEventHandler(LocalFileAdaptor localFileAdaptor, int cacheSize, SyncMode syncMode) {
+    public FileSyncEventHandler(LocalFileAdaptor localFileAdaptor, int cacheSize, SyncMode syncMode) {
         this(localFileAdaptor, cacheSize);
         setSyncMode(null == syncMode ? SyncMode.BIDIRECTIONAL : syncMode);
     }

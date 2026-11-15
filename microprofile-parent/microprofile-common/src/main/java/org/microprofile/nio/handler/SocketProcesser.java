@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.CancelledKeyException;
 import java.nio.channels.ClosedChannelException;
+import java.nio.channels.ClosedSelectorException;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
@@ -281,15 +282,42 @@ public abstract class SocketProcesser implements Closeable {
 
     @Override
     public void close() throws IOException {
+        closed = true;
+        // 先把已建立的连接全部关掉：只关 selector 的话，对端收不到 EOF，
+        // 会一直以为连接还在（服务端重启/退出时客户端也就感知不到掉线）
+        closeChannels();
         if (selector.isOpen()) {
             selector.close();
         }
-        closed = true;
         for (Thread thread : threads) {
             thread.interrupt();
         }
         if (null != pool && !pool.isShutdown()) {
             pool.shutdown();
+        }
+    }
+
+    /**
+     * 关闭 selector 上注册的全部通道（含监听通道），单个通道出错不影响其它通道
+     */
+    private void closeChannels() {
+        SelectionKey[] keys;
+        try {
+            keys = selector.keys().toArray(new SelectionKey[0]);
+        } catch (ClosedSelectorException e) {
+            return;
+        }
+        for (SelectionKey key : keys) {
+            try {
+                key.channel().close();
+            } catch (Exception e) {
+                log.debug("关闭通道出错", e);
+            }
+            try {
+                key.cancel();
+            } catch (Exception e) {
+                log.debug("取消 selection key 出错", e);
+            }
         }
     }
 }
