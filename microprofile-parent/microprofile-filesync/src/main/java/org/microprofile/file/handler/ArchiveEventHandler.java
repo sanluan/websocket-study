@@ -139,6 +139,7 @@ public class ArchiveEventHandler extends RemoteEventHandler implements EventHand
         }
         this.archiveRoot = archiveRoot.getAbsoluteFile();
         this.localFileAdaptor = localFileAdaptor;
+        this.remoteMessageHandler = new RemoteMessageHandler(this, localFileAdaptor);
         if (0 < localFileAdaptor.getBlockSize()) {
             this.blockSize = localFileAdaptor.getBlockSize();
         }

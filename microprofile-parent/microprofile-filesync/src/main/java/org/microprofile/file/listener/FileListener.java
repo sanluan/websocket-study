@@ -77,8 +77,12 @@ public class FileListener implements FileAlterationListener {
     private void init(int blockSize) {
         File directory = observer.getDirectory();
         basePath = directory.getAbsolutePath();
-        localFileAdaptor = new LocalFileAdaptor(basePath, blockSize);
+        localFileAdaptor = createLocalFileAdaptor(basePath, blockSize);
         observer.addListener(this);
+    }
+    
+    public static LocalFileAdaptor createLocalFileAdaptor(String basePath,int blockSize) {
+        return new LocalFileAdaptor(basePath, blockSize);
     }
 
     private void process(EventType eventType, File file) {
